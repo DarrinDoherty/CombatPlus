@@ -1,0 +1,18 @@
+{
+  "name": "combat-plus",
+  "version": "1.0.0",
+  "description": "Atari Combat clone built with TypeScript and HTML5 Canvas",
+  "main": "index.html",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "serve": "python -m http.server 8000"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "@types/node": "^20.0.0"
+  },
+  "keywords": ["game", "atari", "combat", "typescript", "canvas"],
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Combat Plus - Atari Combat Clone</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Courier New', monospace;
+            color: #fff;
+        }
+        
+        .game-container {
+            text-align: center;
+        }
+        
+        canvas {
+            border: 2px solid #444;
+            background-color: #222;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        
+        .score {
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        h1 {
+            color: #ff6600;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <h1>COMBAT PLUS</h1>
+        <div class="score">
+            <span id="player1Score">Player 1: 0</span> | 
+            <span id="player2Score">Player 2: 0</span>
+        </div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div class="controls">
+            <p><strong>Player 1 (LEFT SIDE):</strong> WASD to move, Space to shoot</p>
+            <p><strong>Player 2 (RIGHT SIDE):</strong> Arrow keys to move, Enter to shoot</p>
+            <p><strong>No Man's Land:</strong> The center channel cannot be crossed!</p>
+            <p>Press R to restart</p>
+        </div>
+    </div>
+    
+    <script type="module" src="dist/main.js"></script>
+</body>
+</html>
