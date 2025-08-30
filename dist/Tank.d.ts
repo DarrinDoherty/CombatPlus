@@ -10,6 +10,7 @@ export declare class Tank {
     controls: Controls;
     lastShotTime: number;
     shootCooldown: number;
+    hasActiveShell: boolean;
     isAI: boolean;
     aiState: string;
     aiTarget: Vector2D | null;
@@ -36,6 +37,9 @@ export declare class Tank {
     disabledSince: number;
     repairTime: number;
     team: 'left' | 'right';
+    isAboutToShoot: boolean;
+    shootWarningStartTime: number;
+    shootWarningDuration: number;
     constructor(position: Vector2D, size: number, speed: number, color: string, playerId: number, controls: Controls, isAI?: boolean, personality?: 'aggressive' | 'defensive' | 'sniper' | 'flanker', team?: 'left' | 'right');
     private setPersonalityModifiers;
     update(pressedKeys: Set<string>, canvasWidth: number, canvasHeight: number, channelLeft?: number, channelRight?: number, enemyTank?: Tank): boolean;
@@ -53,7 +57,12 @@ export declare class Tank {
     private updateManual;
     shouldAIShoot(enemyTank: Tank): boolean;
     canShoot(): boolean;
+    startShootingWarning(): void;
+    resetShootingWarning(): void;
+    updateWarningState(): void;
+    canStartWarning(): boolean;
     shoot(bulletSpeed: number, bulletSize: number): Bullet | null;
+    clearActiveShell(): void;
     render(ctx: CanvasRenderingContext2D): void;
     freeze(duration?: number): void;
     checkCollision(other: Tank): boolean;

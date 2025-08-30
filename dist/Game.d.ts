@@ -10,6 +10,7 @@ export declare class Game {
     private freezeGrenades;
     private pickupGrenades;
     private pressedKeys;
+    private pendingManualGrenades;
     private gameRunning;
     private player1Score;
     private player2Score;
@@ -59,6 +60,7 @@ export declare class Game {
     restart(): void;
     private updateAI;
     private handleCollisions;
+    private handleExplosiveDamage;
     private gameLoop;
     private update;
     private updateFreezeGrenades;
@@ -71,6 +73,7 @@ export declare class Game {
         x: number;
         y: number;
     }): void;
+    private handleGrenadeKey;
     private getDirectionName;
     private updatePickupGrenades;
     private spawnPickupGrenades;

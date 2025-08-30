@@ -1,4 +1,11 @@
 import { Bullet } from './Bullet.js';
+// Warning System Configuration - Easy to modify
+const WARNING_CONFIG = {
+    TOTAL_WARNING_TIME: 1000, // 1 second total warning time (adjust for difficulty)
+    SLOW_FLASH_SPEED: 200, // Slow flash interval (ms) - start (higher = slower)
+    FAST_FLASH_SPEED: 50, // Fast flash interval (ms) - end (lower = faster)
+    ACCELERATION_CURVE: 2, // How quickly flashing accelerates (1=linear, 2=quadratic, 3=cubic)
+};
 export class Tank {
     constructor(position, size, speed, color, playerId, controls, isAI = true, personality, team = 'left') {
         this.position = { ...position };
@@ -9,7 +16,8 @@ export class Tank {
         this.playerId = playerId;
         this.controls = controls;
         this.lastShotTime = 0;
-        this.shootCooldown = isAI ? 400 : 500; // AI shoots every 400ms (more controlled)
+        this.shootCooldown = isAI ? 1500 : 2000; // Faster - one shell every 1.5-2 seconds per tank
+        this.hasActiveShell = false; // No active shell initially
         this.isAI = isAI;
         this.aiState = 'patrol';
         this.aiTarget = null;
@@ -34,6 +42,10 @@ export class Tank {
         this.disabledSince = 0;
         this.repairTime = 8000; // 8 seconds to repair from disabled state
         this.team = team;
+        // Initialize shooting warning system
+        this.isAboutToShoot = false;
+        this.shootWarningStartTime = 0;
+        this.shootWarningDuration = WARNING_CONFIG.TOTAL_WARNING_TIME;
     }
     setPersonalityModifiers() {
         switch (this.aiPersonality) {
@@ -45,7 +57,7 @@ export class Tank {
                     aimAccuracy: Math.PI / 10, // 18 degrees - less accurate but aggressive
                     aggressiveness: 0.8 // High aggression
                 };
-                this.shootCooldown = 500; // Slower shooting - was 300
+                this.shootCooldown = 1200; // Aggressive tanks shoot more frequently
                 break;
             case 'sniper':
                 this.aiPersonalityModifiers = {
@@ -55,7 +67,7 @@ export class Tank {
                     aimAccuracy: Math.PI / 20, // 9 degrees - very accurate
                     aggressiveness: 0.3 // Low aggression, waits for good shots
                 };
-                this.shootCooldown = 800; // Much slower shooting - was 600
+                this.shootCooldown = 2200; // Snipers take more time to aim
                 break;
             case 'defensive':
                 this.aiPersonalityModifiers = {
@@ -65,7 +77,7 @@ export class Tank {
                     aimAccuracy: Math.PI / 15, // 12 degrees - good accuracy
                     aggressiveness: 0.4 // Defensive, reactive
                 };
-                this.shootCooldown = 600; // Slower - was 500
+                this.shootCooldown = 1800; // Defensive - moderate shooting rate
                 break;
             case 'flanker':
                 this.aiPersonalityModifiers = {
@@ -75,7 +87,7 @@ export class Tank {
                     aimAccuracy: Math.PI / 12, // 15 degrees - decent accuracy
                     aggressiveness: 0.6 // Moderate aggression
                 };
-                this.shootCooldown = 500; // Slower - was 400
+                this.shootCooldown = 1400; // Flankers shoot fairly quickly
                 break;
         }
     }
@@ -490,23 +502,23 @@ export class Tank {
         this.position.y = newY;
     }
     shouldAIShoot(enemyTank) {
-        if (!this.isAI || !this.canShoot())
+        if (!this.isAI || !this.canStartWarning())
             return false;
         const dx = enemyTank.position.x - this.position.x;
         const dy = enemyTank.position.y - this.position.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         // Random decision affects shooting behavior
-        if (this.aiCurrentDecision === 'hesitate' && Math.random() < 0.5) { // Reduced from 0.7
+        if (this.aiCurrentDecision === 'hesitate' && Math.random() < 0.3) { // Reduced from 0.5 - less hesitation
             return false; // Don't shoot when hesitating
         }
-        if (this.aiCurrentDecision === 'panic' && Math.random() < 0.4) { // Increased from 0.3
+        if (this.aiCurrentDecision === 'panic' && Math.random() < 0.6) { // Increased from 0.4 - more panic fire
             return true; // Panic fire regardless of aim
         }
-        if (this.aiCurrentDecision === 'overconfident' && distance < 450) { // Increased from 400
-            return Math.random() < 0.9; // Increased from 0.8 - shoot more often when overconfident
+        if (this.aiCurrentDecision === 'overconfident' && distance < 450) {
+            return Math.random() < 0.95; // Increased from 0.9 - shoot almost always when overconfident
         }
         // More aggressive shooting - increased range significantly
-        const maxShootingRange = Math.max(this.aiPersonalityModifiers.shootingRange * 1.3, 350);
+        const maxShootingRange = Math.max(this.aiPersonalityModifiers.shootingRange * 1.5, 400); // Increased multiplier and base range
         if (distance < maxShootingRange && distance > 50) {
             const angleToEnemy = Math.atan2(dy, dx);
             const angleDiff = Math.abs(this.angle - angleToEnemy);
@@ -526,10 +538,52 @@ export class Tank {
         return false;
     }
     canShoot() {
-        // Tank can't shoot if frozen, disabled, or on cooldown
+        // Tank can't shoot if frozen, disabled, or has active shell
+        const currentTime = Date.now();
+        // Basic conditions for shooting
+        const basicConditionsMet = !this.isFrozen &&
+            !this.isDisabled &&
+            !this.hasActiveShell;
+        if (!basicConditionsMet) {
+            this.isAboutToShoot = false; // Cancel warning if conditions not met
+            return false;
+        }
+        // Check if enough time has passed since last shot
+        const cooldownComplete = (currentTime - this.lastShotTime) > this.shootCooldown;
+        if (!cooldownComplete) {
+            return false;
+        }
+        // If we're in warning phase, check if warning period is complete
+        if (this.isAboutToShoot) {
+            return (currentTime - this.shootWarningStartTime) >= this.shootWarningDuration;
+        }
+        return false; // Need to start warning first
+    }
+    startShootingWarning() {
+        if (!this.isAboutToShoot && this.canStartWarning()) {
+            this.isAboutToShoot = true;
+            this.shootWarningStartTime = Date.now();
+        }
+    }
+    resetShootingWarning() {
+        this.isAboutToShoot = false;
+        this.shootWarningStartTime = 0;
+    }
+    updateWarningState() {
+        // Auto-reset warning if conditions are no longer met or warning has expired
+        if (this.isAboutToShoot) {
+            const currentTime = Date.now();
+            const warningExpired = (currentTime - this.shootWarningStartTime) > (this.shootWarningDuration + 500); // 500ms grace period
+            if (!this.canStartWarning() || warningExpired) {
+                this.resetShootingWarning();
+            }
+        }
+    }
+    canStartWarning() {
         const currentTime = Date.now();
         return !this.isFrozen &&
             !this.isDisabled &&
+            !this.hasActiveShell &&
             (currentTime - this.lastShotTime) > this.shootCooldown;
     }
     shoot(bulletSpeed, bulletSize) {
@@ -537,11 +591,18 @@ export class Tank {
             return null;
         }
         this.lastShotTime = Date.now();
+        this.hasActiveShell = true; // Mark that this tank has a shell in flight
+        this.isAboutToShoot = false; // Reset warning state after shooting
         const bulletVelocity = {
             x: Math.cos(this.angle) * bulletSpeed,
             y: Math.sin(this.angle) * bulletSpeed
         };
-        return new Bullet({ ...this.position }, bulletVelocity, bulletSize, this.playerId);
+        return new Bullet({ ...this.position }, bulletVelocity, bulletSize, this.playerId, 50 // Explosion radius
+        );
+    }
+    // Mark that this tank's shell has exploded/been destroyed
+    clearActiveShell() {
+        this.hasActiveShell = false;
     }
     render(ctx) {
         ctx.save();
@@ -549,7 +610,21 @@ export class Tank {
         ctx.rotate(this.angle);
         // Tank body - color based on health and status
         let bodyColor = this.color;
-        if (this.isFrozen) {
+        if (this.isAboutToShoot) {
+            // Calculate escalating flash speed from slow to fast over warning period
+            const currentTime = Date.now();
+            const timeIntoWarning = currentTime - this.shootWarningStartTime;
+            const warningProgress = Math.min(timeIntoWarning / this.shootWarningDuration, 1);
+            // Use exponential curve for dramatic acceleration
+            const progressCurved = Math.pow(warningProgress, WARNING_CONFIG.ACCELERATION_CURVE);
+            // Interpolate flash speed from slow to fast
+            const currentFlashSpeed = WARNING_CONFIG.SLOW_FLASH_SPEED +
+                (WARNING_CONFIG.FAST_FLASH_SPEED - WARNING_CONFIG.SLOW_FLASH_SPEED) * progressCurved;
+            // Calculate flash state based on current speed
+            const flashCycle = (currentTime % (currentFlashSpeed * 2)) < currentFlashSpeed;
+            bodyColor = flashCycle ? '#ff0000' : '#ffffff'; // Red/white flash
+        }
+        else if (this.isFrozen) {
             bodyColor = '#4444ff'; // Blue when frozen
         }
         else if (this.isDisabled) {

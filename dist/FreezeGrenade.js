@@ -1,5 +1,5 @@
 export class FreezeGrenade {
-    constructor(position, velocity, size = 8) {
+    constructor(position, velocity, size = 8, manualDetonation = false) {
         this.position = { ...position };
         this.velocity = { ...velocity };
         this.size = size;
@@ -7,6 +7,8 @@ export class FreezeGrenade {
         this.explosionRadius = 150; // Radius of freeze effect
         this.timeToExplode = 1000; // 1 second until explosion
         this.createdAt = Date.now();
+        this.manualDetonation = manualDetonation;
+        this.readyToDetonate = false;
     }
     update() {
         if (!this.active)
@@ -14,15 +16,33 @@ export class FreezeGrenade {
         // Simple movement - no physics, just travel in the direction thrown
         this.position.x += this.velocity.x;
         this.position.y += this.velocity.y;
-        // Check if it's time to explode (after traveling for set time)
-        const currentTime = Date.now();
-        if (currentTime - this.createdAt >= this.timeToExplode) {
-            this.explode();
+        if (this.manualDetonation) {
+            // For manual detonation grenades, slow down over time and become ready to detonate
+            const currentTime = Date.now();
+            const timeTraveled = currentTime - this.createdAt;
+            if (timeTraveled >= 500) { // After 0.5 seconds, ready to detonate
+                this.readyToDetonate = true;
+                // Slow down the grenade significantly
+                this.velocity.x *= 0.95;
+                this.velocity.y *= 0.95;
+            }
+        }
+        else {
+            // Check if it's time to explode (after traveling for set time)
+            const currentTime = Date.now();
+            if (currentTime - this.createdAt >= this.timeToExplode) {
+                this.explode();
+            }
         }
     }
     explode() {
         this.active = false;
         console.log(`Freeze grenade exploded at (${this.position.x}, ${this.position.y})`);
+    }
+    manualExplode() {
+        if (this.manualDetonation && this.readyToDetonate) {
+            this.explode();
+        }
     }
     render(ctx) {
         if (!this.active)
@@ -31,8 +51,20 @@ export class FreezeGrenade {
         // Flash effect as it gets closer to explosion
         const timeLeft = this.timeToExplode - (Date.now() - this.createdAt);
         const flashIntensity = Math.max(0, 1 - (timeLeft / this.timeToExplode));
-        // Draw grenade body
-        ctx.fillStyle = flashIntensity > 0.5 ? '#ffffff' : '#00ccff'; // Flash white when about to explode
+        // Draw grenade body - different colors for manual vs auto
+        if (this.manualDetonation) {
+            if (this.readyToDetonate) {
+                // Pulsing green when ready to detonate
+                const pulse = Math.sin(Date.now() / 200) * 0.3 + 0.7;
+                ctx.fillStyle = `rgba(0, 255, 0, ${pulse})`;
+            }
+            else {
+                ctx.fillStyle = '#00ccff'; // Blue while traveling
+            }
+        }
+        else {
+            ctx.fillStyle = flashIntensity > 0.5 ? '#ffffff' : '#00ccff'; // Flash white when about to explode
+        }
         ctx.beginPath();
         ctx.arc(this.position.x, this.position.y, this.size / 2, 0, 2 * Math.PI);
         ctx.fill();

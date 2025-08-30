@@ -7,9 +7,12 @@ export declare class FreezeGrenade {
     explosionRadius: number;
     timeToExplode: number;
     createdAt: number;
-    constructor(position: Vector2D, velocity: Vector2D, size?: number);
+    manualDetonation: boolean;
+    readyToDetonate: boolean;
+    constructor(position: Vector2D, velocity: Vector2D, size?: number, manualDetonation?: boolean);
     update(): void;
     explode(): void;
+    manualExplode(): void;
     render(ctx: CanvasRenderingContext2D): void;
     isInBounds(width: number, height: number): boolean;
     isInRange(target: {

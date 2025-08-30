@@ -15,10 +15,17 @@ Combat Plus is a single-player tactical rescue game where you play as a medic na
 - **Emotional Storytelling**: Celebration for rescues, mourning for losses
 
 ### 🎯 Advanced Tank Combat
+- **Explosive Shell System**: Each tank fires one shell at a time with radius damage
+- **Artillery-Style Combat**: Shells explode on impact or boundary hit, damaging all units in blast radius
 - **Health-Based System**: 2-hit destruction (healthy → damaged → disabled → destroyed)
 - **Auto-Repair Mechanics**: Disabled tanks repair after 8 seconds with visual progress
-- **AI Personalities**: 4 distinct behaviors (Aggressive, Sniper, Defensive, Flanker)
+- **AI Personalities**: 4 distinct behaviors with different firing rates and strategies
+  - **Aggressive**: Fast firing (1.2s cooldown), close combat tactics
+  - **Sniper**: Slow but accurate (2.2s cooldown), long-range engagement
+  - **Defensive**: Moderate firing (1.8s cooldown), balanced approach
+  - **Flanker**: Quick firing (1.4s cooldown), mobile tactics
 - **Smart Targeting**: Team-based AI that engages across no-man's land
+- **One Shell Per Tank**: Each tank must wait for their shell to explode before firing again
 
 ### 💣 Tactical Grenade System
 - **Directional Throwing**: WASD keys for precise 4-direction grenade deployment
@@ -93,15 +100,24 @@ class Game {
 4. **Survive**: Use freeze grenades strategically to create safe passages
 
 ### AI Tank Behavior
-- **Aggressive**: Fast movement, close combat, frequent shooting
-- **Sniper**: Long-range, slower shots, defensive positioning  
-- **Defensive**: Medium range, balanced approach
-- **Flanker**: Mobile, good range, tactical movement
+- **Aggressive**: Fast movement, close combat, rapid firing (1.2s cooldown)
+- **Sniper**: Long-range, precise shots, slower firing (2.2s cooldown)
+- **Defensive**: Medium range, balanced approach (1.8s cooldown)
+- **Flanker**: Mobile, tactical movement, quick firing (1.4s cooldown)
+
+### Combat Mechanics
+- **Explosive Shells**: Each tank shell creates a blast radius dealing area damage
+- **One Shell Rule**: Tanks must wait for their shell to explode before firing again
+- **Artillery Strategy**: Shells explode on impact or when hitting boundaries
+- **Area Damage**: Multiple units can be damaged by a single shell explosion
+- **Friendly Fire Prevention**: Shells only damage enemy units, not same-team tanks
 
 ### Strategic Elements
+- **Shell Management**: Timing and positioning critical with one-shell-per-tank limit
+- **Explosive Positioning**: Use tank explosions to clear multiple enemies
 - **Grenade Management**: Limited ammunition requires careful planning
 - **Timing**: Bleeding out creates constant pressure
-- **Risk/Reward**: Faster rescues vs. safer approaches
+- **Risk/Reward**: Faster rescues vs. safer approaches through explosive combat zones
 - **Resource Collection**: Pickup grenades provide tactical options
 
 ## 🛠️ Development Setup
@@ -189,6 +205,7 @@ All sounds are procedurally generated using oscillators for authentic retro gami
 7. **Pickup System**: Dynamic grenade ammunition spawning
 8. **Audio Engine**: Complete 8-bit sound implementation
 9. **Emotional Depth**: Soldier profiles and storytelling
+10. **Explosive Shell System**: Artillery-style combat with area damage and one-shell-per-tank mechanics
 
 ## 🚀 Why This Architecture?
 

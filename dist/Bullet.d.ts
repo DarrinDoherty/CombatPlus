@@ -5,7 +5,8 @@ export declare class Bullet {
     size: number;
     active: boolean;
     playerId: number;
-    constructor(position: Vector2D, velocity: Vector2D, size: number, playerId: number);
+    explosionRadius: number;
+    constructor(position: Vector2D, velocity: Vector2D, size: number, playerId: number, explosionRadius?: number);
     update(): void;
     render(ctx: CanvasRenderingContext2D): void;
     isOutOfBounds(width: number, height: number): boolean;

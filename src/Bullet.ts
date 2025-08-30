@@ -6,13 +6,15 @@ export class Bullet {
     public size: number;
     public active: boolean;
     public playerId: number;
+    public explosionRadius: number;
 
-    constructor(position: Vector2D, velocity: Vector2D, size: number, playerId: number) {
+    constructor(position: Vector2D, velocity: Vector2D, size: number, playerId: number, explosionRadius: number = 40) {
         this.position = { ...position };
         this.velocity = { ...velocity };
         this.size = size;
         this.active = true;
         this.playerId = playerId;
+        this.explosionRadius = explosionRadius;
     }
 
     update(): void {

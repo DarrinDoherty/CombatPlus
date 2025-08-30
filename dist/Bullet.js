@@ -1,10 +1,11 @@
 export class Bullet {
-    constructor(position, velocity, size, playerId) {
+    constructor(position, velocity, size, playerId, explosionRadius = 40) {
         this.position = { ...position };
         this.velocity = { ...velocity };
         this.size = size;
         this.active = true;
         this.playerId = playerId;
+        this.explosionRadius = explosionRadius;
     }
     update() {
         this.position.x += this.velocity.x;

@@ -6,7 +6,7 @@ import { InjuredSoldier } from './InjuredSoldier.js';
 import { FreezeGrenade } from './FreezeGrenade.js';
 import { PickupGrenade } from './PickupGrenade.js';
 import { SoundEngine } from './SoundEngine.js';
-import { GameConfig } from './types.js';
+import { GameConfig, Vector2D } from './types.js';
 import { SoldierProfile, getRandomSoldierProfile } from './SoldierProfiles.js';
 
 export class Game {
@@ -21,6 +21,7 @@ export class Game {
     private freezeGrenades: FreezeGrenade[];
     private pickupGrenades: PickupGrenade[];
     private pressedKeys: Set<string>;
+    private pendingManualGrenades: Map<string, FreezeGrenade>;
     private gameRunning: boolean;
     private player1Score: number;
     private player2Score: number;
@@ -98,6 +99,7 @@ export class Game {
         this.rescuesCompleted = 0;
         this.baseFreezeTime = 5000; // Start with 5 seconds freeze time
         this.pressedKeys = new Set();
+        this.pendingManualGrenades = new Map();
         this.gameRunning = false; // Start in not-running mode
         this.player1Score = 0;
         this.player2Score = 0;
@@ -540,13 +542,16 @@ export class Game {
                 
                 const tankWasRepaired = tank.update(emptyKeys, this.config.canvasWidth, this.config.canvasHeight, this.channelLeft, this.channelRight, nearestEnemy);
                 
+                // Update tank warning state (auto-reset if conditions not met)
+                tank.updateWarningState();
+                
                 // Play repair sound if tank was repaired
                 if (tankWasRepaired) {
                     this.soundEngine.playTankRepair();
                 }
                 
                 // Handle AI shooting - make sure tank aims at enemy before shooting
-                if (nearestEnemy && tank.canShoot()) {
+                if (nearestEnemy && tank.shouldAIShoot(nearestEnemy)) {
                     // Calculate angle to enemy for shooting
                     const dx = nearestEnemy.position.x - tank.position.x;
                     const dy = nearestEnemy.position.y - tank.position.y;
@@ -561,11 +566,16 @@ export class Game {
                         const originalAngle = tank.angle;
                         tank.angle = angleToEnemy;
                         
-                        const bullet = tank.shoot(this.config.bulletSpeed, this.config.bulletSize);
-                        if (bullet) {
-                            this.bullets.push(bullet);
-                            // Play tank shoot sound
-                            this.soundEngine.playTankShoot();
+                        // Start warning if not already warning, or shoot if warning period is complete
+                        if (!tank.isAboutToShoot) {
+                            tank.startShootingWarning();
+                        } else if (tank.canShoot()) {
+                            const bullet = tank.shoot(this.config.bulletSpeed, this.config.bulletSize);
+                            if (bullet) {
+                                this.bullets.push(bullet);
+                                // Play tank shoot sound
+                                this.soundEngine.playTankShoot();
+                            }
                         }
                         
                         // Restore movement angle
@@ -577,10 +587,17 @@ export class Game {
     }
 
     private handleCollisions(): void {
-        // Check bullet-tank collisions
+        // Check bullet collisions and boundary hits
         for (let i = this.bullets.length - 1; i >= 0; i--) {
             const bullet = this.bullets[i];
-            let bulletHit = false;
+            let shouldExplode = false;
+            let explosionPosition = { ...bullet.position };
+
+            // Check if bullet hits boundary
+            if (bullet.position.x < 0 || bullet.position.x > this.config.canvasWidth ||
+                bullet.position.y < 0 || bullet.position.y > this.config.canvasHeight) {
+                shouldExplode = true;
+            }
 
             // Check collision with tanks
             for (let j = this.tanks.length - 1; j >= 0; j--) {
@@ -594,32 +611,15 @@ export class Game {
                 const distance = Math.sqrt(dx * dx + dy * dy);
 
                 if (distance < tank.size / 2 + bullet.size / 2) {
-                    // Tank hit!
-                    const result = tank.takeDamage();
-                    
-                    // Create explosion and play sound
-                    this.explosions.push(new Explosion(
-                        { x: tank.position.x, y: tank.position.y },
-                        result === 'destroyed' ? 30 : 15
-                    ));
-                    this.soundEngine.playExplosion();
-                    
-                    if (result === 'destroyed') {
-                        console.log(`Tank destroyed! Removing from battlefield.`);
-                        this.tanks.splice(j, 1);
-                    } else if (result === 'disabled') {
-                        console.log(`Tank disabled! Cannot move or shoot.`);
-                    }
-
-                    this.bullets.splice(i, 1);
-                    bulletHit = true;
-                    this.screenShake = 5;
+                    // Direct hit!
+                    explosionPosition = { x: tank.position.x, y: tank.position.y };
+                    shouldExplode = true;
                     break;
                 }
             }
 
             // Check collision with player (only if player is outside hospital safety zone)
-            if (!bulletHit && this.player) {
+            if (!shouldExplode && this.player) {
                 const hospitalSafetyZone = 50; // Top 50px is hospital safety zone
                 const playerInHospital = this.player.position.y < hospitalSafetyZone;
                 
@@ -629,25 +629,83 @@ export class Game {
                     const distance = Math.sqrt(dx * dx + dy * dy);
 
                     if (distance < this.player.size / 2 + bullet.size / 2) {
-                        // Player hit!
-                        this.bullets.splice(i, 1);
-                        this.playerLives--;
-                        
-                        // Create explosion at player position and play hit sound
-                        this.explosions.push(new Explosion(
-                            { x: this.player.position.x, y: this.player.position.y },
-                            20
-                        ));
-                        this.soundEngine.playPlayerHit();
-                        
-                        this.screenShake = 8;
-                        bulletHit = true;
+                        // Direct hit on player!
+                        explosionPosition = { x: this.player.position.x, y: this.player.position.y };
+                        shouldExplode = true;
+                    }
+                }
+            }
 
-                        if (this.playerLives <= 0) {
-                            this.gameOver = true;
-                            this.gameRunning = false;
-                        } else {
-                        // Check if player was carrying a soldier when they died
+            // If bullet should explode, handle explosive damage
+            if (shouldExplode) {
+                this.handleExplosiveDamage(bullet, explosionPosition);
+                this.bullets.splice(i, 1);
+            }
+        }
+    }
+
+    private handleExplosiveDamage(bullet: Bullet, explosionPos: Vector2D): void {
+        // Find the tank that fired this bullet to clear its active shell
+        const firingTank = this.tanks.find(tank => tank.playerId === bullet.playerId);
+        if (firingTank) {
+            firingTank.clearActiveShell();
+        }
+
+        // Create explosion visual effect
+        this.explosions.push(new Explosion(explosionPos, bullet.explosionRadius));
+        this.soundEngine.playExplosion();
+        this.screenShake = 8;
+
+        // Damage all entities within explosion radius
+        let damageDealt = false;
+
+        // Check tank damage in explosion radius
+        for (let j = this.tanks.length - 1; j >= 0; j--) {
+            const tank = this.tanks[j];
+            
+            // Skip tanks from same team (friendly fire prevention)
+            if (bullet.playerId === tank.playerId) continue;
+
+            const dx = tank.position.x - explosionPos.x;
+            const dy = tank.position.y - explosionPos.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance <= bullet.explosionRadius) {
+                const result = tank.takeDamage();
+                damageDealt = true;
+                
+                // Reset warning state when tank takes damage
+                tank.resetShootingWarning();
+                
+                if (result === 'destroyed') {
+                    console.log(`Tank destroyed by explosion! Removing from battlefield.`);
+                    this.tanks.splice(j, 1);
+                } else if (result === 'disabled') {
+                    console.log(`Tank disabled by explosion! Cannot move or shoot.`);
+                }
+            }
+        }
+
+        // Check player damage in explosion radius (only if outside hospital)
+        if (this.player) {
+            const hospitalSafetyZone = 50;
+            const playerInHospital = this.player.position.y < hospitalSafetyZone;
+            
+            if (!playerInHospital) {
+                const dx = this.player.position.x - explosionPos.x;
+                const dy = this.player.position.y - explosionPos.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance <= bullet.explosionRadius) {
+                    this.playerLives--;
+                    this.soundEngine.playPlayerHit();
+                    damageDealt = true;
+
+                    if (this.playerLives <= 0) {
+                        this.gameOver = true;
+                        this.gameRunning = false;
+                    } else {
+                        // Check if player was carrying a soldier when hit by explosion
                         if (this.player.isCarryingSoldier && this.currentSoldierProfile) {
                             // Store soldier profile for mourning display
                             this.lastSoldierProfile = this.currentSoldierProfile;
@@ -669,14 +727,13 @@ export class Game {
                             // Clear current soldier data
                             this.injuredSoldier = null;
                             this.currentSoldierProfile = null;
-                        }                            // Reset player position if they have lives left
-                            this.player.position = { x: this.config.canvasWidth / 2, y: 30 };
-                            this.player.isCarryingSoldier = false; // Drop soldier if carrying
                         }
                         
-                        this.updateScore();
+                        // Reset player position if they have lives left
+                        this.player.position = { x: this.config.canvasWidth / 2, y: 30 };
+                        this.player.isCarryingSoldier = false; // Drop soldier if carrying
                     }
-                } // Close playerInHospital check
+                }
             }
         }
     }
@@ -709,12 +766,7 @@ export class Game {
         for (let i = this.bullets.length - 1; i >= 0; i--) {
             const bullet = this.bullets[i];
             bullet.update();
-
-            // Remove bullets that are off-screen
-            if (bullet.position.x < 0 || bullet.position.x > this.config.canvasWidth ||
-                bullet.position.y < 0 || bullet.position.y > this.config.canvasHeight) {
-                this.bullets.splice(i, 1);
-            }
+            // Note: Boundary collision is now handled in handleCollisions() with explosions
         }
 
         // Update explosions
@@ -866,6 +918,15 @@ export class Game {
             if (!grenade.active) {
                 // Grenade has exploded, freeze all tanks in range
                 this.freezeAllTanksInRange(grenade.position, grenade.explosionRadius);
+                
+                // Clean up from pending manual grenades map
+                for (const [key, pendingGrenade] of this.pendingManualGrenades.entries()) {
+                    if (pendingGrenade === grenade) {
+                        this.pendingManualGrenades.delete(key);
+                        break;
+                    }
+                }
+                
                 this.freezeGrenades.splice(i, 1);
                 
                 // Play freeze grenade explosion sound
@@ -1035,6 +1096,35 @@ export class Game {
                 } else {
                     console.log(`Freeze grenade thrown ${this.player.isCarryingSoldier ? 'upward' : 'downward'}! ${this.player.grenadeCount} grenades remaining.`);
                 }
+            }
+        }
+    }
+
+    private handleGrenadeKey(key: string, direction: { x: number, y: number }): void {
+        // Check if there's already a pending manual grenade for this key
+        const existingGrenade = this.pendingManualGrenades.get(key);
+        
+        if (existingGrenade && existingGrenade.readyToDetonate) {
+            // Second click - detonate the grenade
+            existingGrenade.manualExplode();
+            this.pendingManualGrenades.delete(key);
+            this.soundEngine.playFreezeGrenadeExplosion();
+            console.log(`Manual grenade detonated with ${key.toUpperCase()} key!`);
+        } else if (!existingGrenade && this.player && this.player.canThrowGrenade()) {
+            // First click - throw a manual grenade
+            const throwDirection = direction;
+            const speed = 4;
+            const velocity = { x: direction.x * speed, y: direction.y * speed };
+            
+            const grenadeData = this.player.throwGrenade(throwDirection);
+            if (grenadeData) {
+                const grenade = new FreezeGrenade(grenadeData.position, velocity, 8, true); // Manual detonation = true
+                this.freezeGrenades.push(grenade);
+                this.pendingManualGrenades.set(key, grenade);
+                
+                this.soundEngine.playGrenadeThrow();
+                const directionName = this.getDirectionName(direction);
+                console.log(`Manual grenade thrown ${directionName}! Press ${key.toUpperCase()} again to detonate. ${this.player.grenadeCount} grenades remaining.`);
             }
         }
     }
@@ -1391,23 +1481,19 @@ export class Game {
                 switch (e.key.toLowerCase()) {
                     case 'w':
                         e.preventDefault();
-                        this.throwFreezeGrenade({ x: 0, y: -1 }); // Up
-                        this.soundEngine.playGrenadeThrow();
+                        this.handleGrenadeKey('w', { x: 0, y: -1 }); // Up
                         break;
                     case 'a':
                         e.preventDefault();
-                        this.throwFreezeGrenade({ x: -1, y: 0 }); // Left
-                        this.soundEngine.playGrenadeThrow();
+                        this.handleGrenadeKey('a', { x: -1, y: 0 }); // Left
                         break;
                     case 's':
                         e.preventDefault();
-                        this.throwFreezeGrenade({ x: 0, y: 1 }); // Down
-                        this.soundEngine.playGrenadeThrow();
+                        this.handleGrenadeKey('s', { x: 0, y: 1 }); // Down
                         break;
                     case 'd':
                         e.preventDefault();
-                        this.throwFreezeGrenade({ x: 1, y: 0 }); // Right
-                        this.soundEngine.playGrenadeThrow();
+                        this.handleGrenadeKey('d', { x: 1, y: 0 }); // Right
                         break;
                     case ' ':
                         this.throwFreezeGrenade(); // Default spacebar behavior
