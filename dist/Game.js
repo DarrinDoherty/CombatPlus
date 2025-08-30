@@ -31,6 +31,7 @@ export class Game {
             bulletSize: 6
         };
         this.bullets = [];
+        this.stopAllWhistles(); // Stop any whistles after initializing bullets array
         this.explosions = [];
         this.freezeGrenades = [];
         this.pickupGrenades = [];
@@ -76,8 +77,42 @@ export class Game {
         this.initializeTanks();
         this.initializePlayer();
         this.initializeInjuredSoldier();
+        this.loadRecordedAudio(); // Load recorded audio files
         this.setupEventListeners();
         this.updateScore();
+    }
+    stopAllWhistles() {
+        // Stop all active whistles before clearing bullets
+        if (this.bullets) {
+            for (const bullet of this.bullets) {
+                bullet.stopWhistle();
+            }
+        }
+    }
+    async loadRecordedAudio() {
+        // Load recorded audio files if they exist
+        // You can add your recorded sound files to an 'audio' folder
+        try {
+            // Example recorded sounds - replace with your actual file paths
+            await this.soundEngine.loadAudioFile('explosion_recorded', 'audio/explosion.mp3');
+            await this.soundEngine.loadAudioFile('tank_fire_recorded', 'audio/tank_fire.wav');
+            await this.soundEngine.loadAudioFile('whistle_recorded', 'audio/shell_whistle.wav');
+            await this.soundEngine.loadAudioFile('mission_success_recorded', 'audio/mission_success.mp3');
+            await this.soundEngine.loadAudioFile('soldier_down_recorded', 'audio/soldier_down.wav');
+            // Multiple medic pickup sounds for variety
+            console.log('Loading medic pickup sounds...');
+            await this.soundEngine.loadAudioFile('medic_pickup_1', 'audio/medic_pickup_1.m4a');
+            await this.soundEngine.loadAudioFile('medic_pickup_2', 'audio/medic_pickup_2.m4a');
+            await this.soundEngine.loadAudioFile('medic_pickup_3', 'audio/medic_pickup_3.m4a');
+            await this.soundEngine.loadAudioFile('medic_pickup_4', 'audio/medic_pickup_4.m4a');
+            await this.soundEngine.loadAudioFile('medic_pickup_5', 'audio/medic_pickup_5.m4a');
+            await this.soundEngine.loadAudioFile('medic_pickup_6', 'audio/medic_pickup_6.m4a');
+            console.log('Recorded audio files loaded successfully');
+        }
+        catch (error) {
+            console.log('Some recorded audio files not found, using synthesized sounds');
+            console.error('Audio loading error:', error);
+        }
     }
     initializeTanks() {
         // Clear existing tanks
@@ -354,6 +389,7 @@ export class Game {
         this.missionComplete = false;
         this.rescuesCompleted = 0;
         this.playerLives = 3;
+        this.stopAllWhistles(); // Stop any whistles before clearing bullets
         this.bullets = [];
         this.explosions = [];
         this.freezeGrenades = [];
@@ -446,7 +482,7 @@ export class Game {
                                 // Start whistle sound for the shell
                                 bullet.startWhistle(this.soundEngine);
                                 // Play tank shoot sound
-                                this.soundEngine.playTankShoot();
+                                this.soundEngine.playWithFallback('tank_fire_recorded', () => this.soundEngine.playTankShoot());
                             }
                             // Restore movement angle
                             tank.angle = originalAngle;
@@ -545,7 +581,7 @@ export class Game {
         }
         // Create explosion visual effect
         this.explosions.push(new Explosion(explosionPos, bullet.explosionRadius));
-        this.soundEngine.playExplosion();
+        this.soundEngine.playWithFallback('explosion_recorded', () => this.soundEngine.playExplosion());
         this.screenShake = 8;
         // Damage all entities within explosion radius
         let damageDealt = false;
@@ -603,7 +639,7 @@ export class Game {
                             console.log(`Survived by: ${this.currentSoldierProfile.family}`);
                             console.log(`They will be remembered...`);
                             // Play soldier death sound
-                            this.soundEngine.playSoldierDeath();
+                            this.soundEngine.playWithFallback('soldier_down_recorded', () => this.soundEngine.playSoldierDeath());
                             // Clear current soldier data
                             this.injuredSoldier = null;
                             this.currentSoldierProfile = null;
@@ -668,7 +704,7 @@ export class Game {
             if (this.injuredSoldier.isDead) {
                 console.log('Soldier has bled out! Mission failed for this soldier.');
                 // Play soldier death sound
-                this.soundEngine.playSoldierDeath();
+                this.soundEngine.playWithFallback('soldier_down_recorded', () => this.soundEngine.playSoldierDeath());
                 // Start mourning period and show soldier profile
                 this.mourningStartTime = Date.now();
                 this.lastSoldierProfile = this.currentSoldierProfile;
@@ -688,8 +724,8 @@ export class Game {
                 this.carriedSoldier = this.injuredSoldier; // Transfer to carried state
                 this.injuredSoldier = null; // Remove from bottom position
                 console.log('Soldier picked up! Get them to the hospital quickly - they\'re still bleeding!');
-                // Play soldier pickup sound
-                this.soundEngine.playSoldierPickup();
+                // Play random medic pickup sound
+                this.soundEngine.playRandomMedicPickup();
             }
         }
         // Update carried soldier (continues bleeding out)
@@ -699,7 +735,7 @@ export class Game {
             if (this.carriedSoldier.isDead) {
                 console.log('Soldier died while being carried! Mission failed.');
                 // Play soldier death sound
-                this.soundEngine.playSoldierDeath();
+                this.soundEngine.playWithFallback('soldier_down_recorded', () => this.soundEngine.playSoldierDeath());
                 // Start mourning period
                 this.mourningStartTime = Date.now();
                 this.lastSoldierProfile = this.currentSoldierProfile;
@@ -731,7 +767,7 @@ export class Game {
                 console.log(`Story: ${this.currentSoldierProfile.backstory}`);
                 console.log(`Family: ${this.currentSoldierProfile.family}`);
                 // Play mission success sound
-                this.soundEngine.playMissionSuccess();
+                this.soundEngine.playWithFallback('mission_success_recorded', () => this.soundEngine.playMissionSuccess());
             }
         }
         // Check if celebration is over and spawn new soldier

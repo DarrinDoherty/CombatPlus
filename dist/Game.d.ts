@@ -43,6 +43,8 @@ export declare class Game {
     private maxPickupGrenadeInterval;
     private freezeZoneEffects;
     constructor(canvas: HTMLCanvasElement);
+    private stopAllWhistles;
+    private loadRecordedAudio;
     private initializeTanks;
     private spawnNewTank;
     private checkAndSpawnForSide;

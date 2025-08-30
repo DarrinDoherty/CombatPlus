@@ -2,6 +2,111 @@ export class SoundEngine {
     constructor() {
         this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
         this.masterVolume = 0.3; // Keep sounds at reasonable volume
+        this.audioBuffers = new Map();
+    }
+    // Load audio file and store in buffer
+    async loadAudioFile(name, url) {
+        try {
+            const response = await fetch(url);
+            const arrayBuffer = await response.arrayBuffer();
+            const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+            this.audioBuffers.set(name, audioBuffer);
+            console.log(`Loaded audio: ${name}`);
+        }
+        catch (error) {
+            console.error(`Failed to load audio ${name}:`, error);
+        }
+    }
+    // Play recorded audio file
+    playRecordedAudio(name, volume = 1) {
+        const buffer = this.audioBuffers.get(name);
+        if (!buffer) {
+            console.warn(`Audio not loaded: ${name}`);
+            return;
+        }
+        const source = this.audioContext.createBufferSource();
+        const gain = this.createGain(volume);
+        source.buffer = buffer;
+        source.connect(gain);
+        gain.connect(this.audioContext.destination);
+        source.start();
+    }
+    // Play random medic pickup sound
+    playRandomMedicPickup() {
+        const medicSounds = [
+            'medic_pickup_1',
+            'medic_pickup_2',
+            'medic_pickup_3',
+            'medic_pickup_4',
+            'medic_pickup_5',
+            'medic_pickup_6'
+        ];
+        // Filter to only sounds that are actually loaded
+        const availableSounds = medicSounds.filter(sound => this.audioBuffers.has(sound));
+        console.log('Available medic sounds:', availableSounds.length, 'out of', medicSounds.length);
+        console.log('Loaded audio buffers:', Array.from(this.audioBuffers.keys()));
+        if (availableSounds.length > 0) {
+            // Randomly select one of the available medic sounds
+            const randomSound = availableSounds[Math.floor(Math.random() * availableSounds.length)];
+            console.log('Playing recorded medic sound:', randomSound);
+            this.playRecordedAudio(randomSound, 0.8);
+        }
+        else {
+            // Multiple synthesized medic pickup variations
+            console.log('No recorded medic sounds available, using synthesized');
+            this.playRandomSynthesizedMedicPickup();
+        }
+    }
+    // Multiple synthesized medic pickup sound variations
+    playRandomSynthesizedMedicPickup() {
+        const variation = Math.floor(Math.random() * 6) + 1; // Random 1-6
+        switch (variation) {
+            case 1:
+                this.playSoldierPickup(); // Original sound
+                break;
+            case 2:
+                // Higher pitched urgency
+                this.playMedicPickupVariation(550, 880, 0.12);
+                break;
+            case 3:
+                // Lower pitched determined
+                this.playMedicPickupVariation(330, 660, 0.15);
+                break;
+            case 4:
+                // Quick double beep
+                this.playMedicPickupVariation(440, 880, 0.08);
+                setTimeout(() => this.playMedicPickupVariation(440, 880, 0.08), 150);
+                break;
+            case 5:
+                // Rising heroic tone
+                this.playMedicPickupVariation(220, 880, 0.25);
+                break;
+            case 6:
+                // Gentle reassuring tone
+                this.playMedicPickupVariation(392, 523, 0.18);
+                break;
+        }
+    }
+    playMedicPickupVariation(startFreq, endFreq, duration) {
+        const oscillator = this.createOscillator(startFreq, 'sine');
+        const gain = this.createGain(0.1);
+        oscillator.connect(gain);
+        gain.connect(this.audioContext.destination);
+        // Rising tone
+        oscillator.frequency.exponentialRampToValueAtTime(endFreq, this.audioContext.currentTime + duration);
+        gain.gain.setValueAtTime(0.1 * this.masterVolume, this.audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + duration);
+        oscillator.start();
+        oscillator.stop(this.audioContext.currentTime + duration);
+    }
+    // Play recorded audio with fallback to synthesized sound
+    playWithFallback(recordedName, fallbackFunction, volume = 1) {
+        if (this.audioBuffers.has(recordedName)) {
+            this.playRecordedAudio(recordedName, volume);
+        }
+        else {
+            fallbackFunction();
+        }
     }
     // Resume audio context (required for some browsers)
     async resumeContext() {

@@ -53,12 +53,18 @@
             border-radius: 5px;
         }
         
-        .restart-btn:hover {
+        .restart-btn:hover:not(:disabled) {
             background-color: #ff8800;
         }
         
-        .restart-btn:active {
+        .restart-btn:active:not(:disabled) {
             background-color: #cc4400;
+        }
+        
+        .restart-btn:disabled {
+            background-color: #666;
+            cursor: not-allowed;
+            opacity: 0.6;
         }
         
         .legend {
@@ -124,10 +130,13 @@
         </div>
         <div class="score">
             <span id="player1Score">Lives: 3 | Rescues: 0</span> | 
-            <span id="player2Score">Press START to begin | Freeze: 5.0s</span>
+            <span id="player2Score">Click START to begin mission | Freeze: 5.0s</span>
         </div>
         <canvas id="gameCanvas" width="800" height="600"></canvas>
-        <button id="restartBtn" class="restart-btn">START MISSION</button>
+        <button id="startBtn" class="restart-btn" disabled>LOADING...</button>
+        <div id="loadingStatus" style="margin-top: 10px; font-size: 14px; color: #888;">
+            Loading audio and game systems... Please wait...
+        </div>
         
         <div class="legend">
             <div class="legend-column">

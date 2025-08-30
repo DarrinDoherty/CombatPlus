@@ -96,7 +96,13 @@ export class Bullet {
 
     startWhistle(soundEngine: any): void {
         if (!this.whistleSound) {
+            // Always create a synthesized whistle that we can control/stop
             this.whistleSound = soundEngine.startShellWhistle();
+            
+            // ALSO play recorded whistle if available (for better sound)
+            if (soundEngine.audioBuffers && soundEngine.audioBuffers.has('whistle_recorded')) {
+                soundEngine.playRecordedAudio('whistle_recorded', 0.7); // Slightly quieter to blend
+            }
         }
     }
 }
