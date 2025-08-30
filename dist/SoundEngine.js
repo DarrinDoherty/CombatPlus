@@ -205,6 +205,31 @@ export class SoundEngine {
         oscillator.start();
         oscillator.stop(this.audioContext.currentTime + 0.2);
     }
+    // Shell whistle sound - returns objects to control the sound
+    startShellWhistle() {
+        const oscillator = this.createOscillator(800, 'sine');
+        const gain = this.createGain(0.04);
+        oscillator.connect(gain);
+        gain.connect(this.audioContext.destination);
+        // Create a falling whistle effect
+        oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(400, this.audioContext.currentTime + 2.0); // 2 second fall
+        // Gentle volume fade in and sustain
+        gain.gain.setValueAtTime(0, this.audioContext.currentTime);
+        gain.gain.linearRampToValueAtTime(0.04 * this.masterVolume, this.audioContext.currentTime + 0.1);
+        oscillator.start();
+        let stopped = false;
+        return {
+            stop: () => {
+                if (!stopped) {
+                    stopped = true;
+                    // Quick fade out when shell explodes
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.05);
+                    oscillator.stop(this.audioContext.currentTime + 0.05);
+                }
+            }
+        };
+    }
     // Resume audio context (required for browser compatibility)
     resumeAudioContext() {
         if (this.audioContext.state === 'suspended') {

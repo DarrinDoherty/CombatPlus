@@ -18,6 +18,9 @@ export declare class SoundEngine {
     playPlayerHit(): void;
     playCriticalBeep(): void;
     playTankRepaired(): void;
+    startShellWhistle(): {
+        stop: () => void;
+    };
     resumeAudioContext(): void;
     setVolume(volume: number): void;
 }

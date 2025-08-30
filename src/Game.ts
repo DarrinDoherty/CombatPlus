@@ -523,7 +523,8 @@ export class Game {
         const emptyKeys = new Set<string>();
 
         // Update each tank's AI with nearest enemy
-        for (const tank of this.tanks) {
+        for (let i = 0; i < this.tanks.length; i++) {
+            const tank = this.tanks[i];
             if (tank.isAI) {
                 const enemies = this.getEnemyTanks(tank);
                 let nearestEnemy: Tank | undefined;
@@ -541,6 +542,9 @@ export class Game {
                 }
                 
                 const tankWasRepaired = tank.update(emptyKeys, this.config.canvasWidth, this.config.canvasHeight, this.channelLeft, this.channelRight, nearestEnemy);
+                
+                // Handle tank-to-tank collisions
+                this.handleTankCollisions(tank, i);
                 
                 // Update tank warning state (auto-reset if conditions not met)
                 tank.updateWarningState();
@@ -562,25 +566,74 @@ export class Game {
                                         (tank.team === 'right' && nearestEnemy.position.x < this.channelLeft);
                     
                     if (isValidTarget) {
-                        // Temporarily aim at enemy for shooting
+                        // Calculate angle to enemy for shooting
                         const originalAngle = tank.angle;
-                        tank.angle = angleToEnemy;
+                        
+                        // For classic Atari Combat style - teams shoot in fixed directions
+                        let shootingAngle: number;
+                        if (tank.team === 'left') {
+                            shootingAngle = 0; // Left team ALWAYS shoots RIGHT (0 radians)
+                        } else {
+                            shootingAngle = Math.PI; // Right team ALWAYS shoots LEFT (π radians)
+                        }
                         
                         // Start warning if not already warning, or shoot if warning period is complete
                         if (!tank.isAboutToShoot) {
-                            tank.startShootingWarning();
+                            tank.startShootingWarning(shootingAngle);
                         } else if (tank.canShoot()) {
-                            const bullet = tank.shoot(this.config.bulletSpeed, this.config.bulletSize);
+                            // Calculate distance to target for artillery shell
+                            const targetDistance = Math.sqrt(dx * dx + dy * dy);
+                            
+                            // Temporarily aim at enemy for shooting
+                            tank.angle = shootingAngle;
+                            const bullet = tank.shoot(this.config.bulletSpeed, this.config.bulletSize, targetDistance);
                             if (bullet) {
                                 this.bullets.push(bullet);
+                                // Start whistle sound for the shell
+                                bullet.startWhistle(this.soundEngine);
                                 // Play tank shoot sound
                                 this.soundEngine.playTankShoot();
                             }
+                            // Restore movement angle
+                            tank.angle = originalAngle;
                         }
-                        
-                        // Restore movement angle
-                        tank.angle = originalAngle;
                     }
+                }
+            }
+        }
+    }
+
+    private handleTankCollisions(tank: Tank, tankIndex: number): void {
+        const TANK_COLLISION_RADIUS = tank.size * 0.8; // Increased to 80% to prevent overlap
+        const REPULSION_FORCE = 0.5; // Reduced force to prevent oscillation
+        
+        // Check collision with all other tanks
+        for (let j = 0; j < this.tanks.length; j++) {
+            if (j === tankIndex) continue; // Don't check collision with self
+            
+            const otherTank = this.tanks[j];
+            const dx = tank.position.x - otherTank.position.x;
+            const dy = tank.position.y - otherTank.position.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // If tanks are too close, push them apart gently
+            if (distance < TANK_COLLISION_RADIUS && distance > 0.1) {
+                // Calculate gentle repulsion direction (normalized)
+                const repulsionX = (dx / distance) * REPULSION_FORCE;
+                const repulsionY = (dy / distance) * REPULSION_FORCE;
+                
+                // Move current tank away from other tank (only this tank to avoid double-movement)
+                let newX = tank.position.x + repulsionX;
+                let newY = tank.position.y + repulsionY;
+                
+                // Keep tank within canvas bounds
+                newX = Math.max(tank.size/2, Math.min(this.config.canvasWidth - tank.size/2, newX));
+                newY = Math.max(tank.size/2, Math.min(this.config.canvasHeight - tank.size/2, newY));
+                
+                // Apply the movement only if tank index is lower (prevents double-processing)
+                if (tankIndex < j) {
+                    tank.position.x = newX;
+                    tank.position.y = newY;
                 }
             }
         }
@@ -638,6 +691,8 @@ export class Game {
 
             // If bullet should explode, handle explosive damage
             if (shouldExplode) {
+                // Stop whistle sound before explosion
+                bullet.stopWhistle();
                 this.handleExplosiveDamage(bullet, explosionPosition);
                 this.bullets.splice(i, 1);
             }
@@ -766,7 +821,16 @@ export class Game {
         for (let i = this.bullets.length - 1; i >= 0; i--) {
             const bullet = this.bullets[i];
             bullet.update();
-            // Note: Boundary collision is now handled in handleCollisions() with explosions
+            
+            // Check if artillery shell has reached its target distance
+            if (bullet.hasReachedTarget()) {
+                // Stop whistle sound before explosion
+                bullet.stopWhistle();
+                // Explode the shell at target location
+                this.handleExplosiveDamage(bullet, bullet.position);
+                this.bullets.splice(i, 1);
+            }
+            // Note: Other boundary collision is handled in handleCollisions() with explosions
         }
 
         // Update explosions
@@ -1325,8 +1389,8 @@ export class Game {
         if (this.celebrationStartTime && this.lastSoldierProfile) {
             const timeLeft = Math.max(0, this.celebrationDuration - (currentTime - this.celebrationStartTime));
             
-            // Semi-transparent background
-            this.ctx.fillStyle = 'rgba(0, 100, 0, 0.8)';
+            // Semi-transparent background (more transparent)
+            this.ctx.fillStyle = 'rgba(0, 100, 0, 0.4)';
             this.ctx.fillRect(100, 150, this.config.canvasWidth - 200, 300);
             
             // Border
@@ -1376,8 +1440,8 @@ export class Game {
         if (this.mourningStartTime && this.lastSoldierProfile) {
             const timeLeft = Math.max(0, this.mourningDuration - (currentTime - this.mourningStartTime));
             
-            // Semi-transparent dark background
-            this.ctx.fillStyle = 'rgba(50, 0, 0, 0.9)';
+            // Semi-transparent dark background (more transparent)
+            this.ctx.fillStyle = 'rgba(50, 0, 0, 0.4)';
             this.ctx.fillRect(100, 150, this.config.canvasWidth - 200, 300);
             
             // Border
@@ -1430,7 +1494,7 @@ export class Game {
         }
 
         if (this.gameOver) {
-            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.4)'; // More transparent game over overlay
             this.ctx.fillRect(0, 0, this.config.canvasWidth, this.config.canvasHeight);
             
             this.ctx.fillStyle = '#ff0000';

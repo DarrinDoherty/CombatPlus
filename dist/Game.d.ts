@@ -59,6 +59,7 @@ export declare class Game {
     pause(): void;
     restart(): void;
     private updateAI;
+    private handleTankCollisions;
     private handleCollisions;
     private handleExplosiveDamage;
     private gameLoop;

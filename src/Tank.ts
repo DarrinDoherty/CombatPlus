@@ -3,7 +3,7 @@ import { Bullet } from './Bullet.js';
 
 // Warning System Configuration - Easy to modify
 const WARNING_CONFIG = {
-    TOTAL_WARNING_TIME: 1000,     // 1 second total warning time (adjust for difficulty)
+    TOTAL_WARNING_TIME: 500,      // 0.5 second total warning time (faster combat)
     SLOW_FLASH_SPEED: 200,        // Slow flash interval (ms) - start (higher = slower)
     FAST_FLASH_SPEED: 50,         // Fast flash interval (ms) - end (lower = faster)
     ACCELERATION_CURVE: 2,        // How quickly flashing accelerates (1=linear, 2=quadratic, 3=cubic)
@@ -49,6 +49,10 @@ export class Tank {
     public isAboutToShoot: boolean;
     public shootWarningStartTime: number;
     public shootWarningDuration: number;
+    public targetAngle: number;
+    public committedDirection: Vector2D;
+    public lastDirectionCommitTime: number;
+    public directionCommitDuration: number;
 
     constructor(
         position: Vector2D,
@@ -104,6 +108,12 @@ export class Tank {
         this.isAboutToShoot = false;
         this.shootWarningStartTime = 0;
         this.shootWarningDuration = WARNING_CONFIG.TOTAL_WARNING_TIME;
+        this.targetAngle = 0;
+        
+        // Initialize direction commitment system (prevent rapid direction changes)
+        this.committedDirection = { x: 0, y: 1 }; // Start committed to moving down
+        this.lastDirectionCommitTime = Date.now();
+        this.directionCommitDuration = 2000; // Commit to a direction for 2 seconds
     }
 
     private setPersonalityModifiers(): void {
@@ -190,6 +200,9 @@ export class Tank {
 
     takeDamage(): 'disabled' | 'destroyed' | 'none' {
         this.health--;
+        
+        // Cancel shooting warning when hit - tank can move again
+        this.resetShootingWarning();
         
         if (this.health <= 0) {
             return 'destroyed';
@@ -285,20 +298,20 @@ export class Tank {
         const randomRoll = Math.random();
         const personalityBias = this.aiPersonalityModifiers.aggressiveness;
         
-        // Random decisions that affect behavior - adjusted for more combat
-        if (randomRoll < 0.10) { // Reduced from 0.12
+        // Random decisions that affect behavior - more aggressive, less retreating
+        if (randomRoll < 0.08) { // Reduced hesitation
             this.aiCurrentDecision = 'hesitate'; // Stop and think
-        } else if (randomRoll < 0.18) { // Reduced from 0.20
+        } else if (randomRoll < 0.15) { // Reduced panic
             this.aiCurrentDecision = 'panic'; // Move erratically
-        } else if (randomRoll < 0.28) {
+        } else if (randomRoll < 0.30) { // Increased overconfidence
             this.aiCurrentDecision = 'overconfident'; // Ignore distance rules
-        } else if (randomRoll < 0.36) { // Reduced from 0.38
+        } else if (randomRoll < 0.35) { // Greatly reduced cautious behavior
             this.aiCurrentDecision = 'cautious'; // Move away from enemy
-        } else if (randomRoll < 0.40) { // Reduced from 0.46 - much less cover seeking
+        } else if (randomRoll < 0.38) { // Greatly reduced cover seeking
             this.aiCurrentDecision = 'seek_cover'; // Actively avoid line of sight
-        } else if (randomRoll < 0.60 + personalityBias * 0.3) { // Increased from 0.54 and 0.2
+        } else if (randomRoll < 0.70 + personalityBias * 0.3) { // Much more aggressive
             this.aiCurrentDecision = 'aggressive'; // Move toward enemy
-        } else if (randomRoll < 0.75) { // Increased from 0.68
+        } else if (randomRoll < 0.85) { // More repositioning
             this.aiCurrentDecision = 'reposition'; // Try to get better angle
         } else {
             this.aiCurrentDecision = 'normal'; // Follow normal behavior
@@ -439,13 +452,16 @@ export class Tank {
                 break;
                 
             case 'defensive':
-                if (this.aiCurrentDecision === 'panic' || distance < optimalDist * 1.2) {
-                    this.aiDirection.x = -Math.cos(angleToEnemy) * speedMod * 0.7;
-                    this.aiDirection.y = -Math.sin(angleToEnemy) * speedMod * 0.7;
+                // Make defensive tanks less cowardly - they should still fight
+                if (this.aiCurrentDecision === 'panic' && distance < optimalDist * 0.8) {
+                    // Only retreat when really close and panicking
+                    this.aiDirection.x = -Math.cos(angleToEnemy) * speedMod * 0.5;
+                    this.aiDirection.y = -Math.sin(angleToEnemy) * speedMod * 0.5;
                 } else {
-                    // Slow repositioning
-                    this.aiDirection.x = Math.cos(angleToEnemy + Math.PI / 3) * speedMod * 0.4;
-                    this.aiDirection.y = Math.sin(angleToEnemy + Math.PI / 3) * speedMod * 0.4;
+                    // Mostly stay and fight with small repositioning
+                    const perpAngle = angleToEnemy + (this.aiRandomFactor > 0.5 ? Math.PI / 4 : -Math.PI / 4);
+                    this.aiDirection.x = Math.cos(perpAngle) * speedMod * 0.6;
+                    this.aiDirection.y = Math.sin(perpAngle) * speedMod * 0.6;
                 }
                 break;
                 
@@ -497,17 +513,118 @@ export class Tank {
             }
         }
 
-        // Avoid walls by changing direction
+        // Avoid walls by changing direction AND bias towards center
         const margin = 60;
-        if (this.position.x < margin || this.position.x > canvasWidth - margin) {
-            this.aiDirection.x *= -1;
+        const centerX = canvasWidth / 2;
+        const centerY = canvasHeight / 2;
+        
+        if (this.position.x < margin) {
+            this.aiDirection.x = Math.abs(this.aiDirection.x); // Force moving right (away from left wall)
+        } else if (this.position.x > canvasWidth - margin) {
+            this.aiDirection.x = -Math.abs(this.aiDirection.x); // Force moving left (away from right wall)
         }
-        if (this.position.y < margin || this.position.y > canvasHeight - margin) {
-            this.aiDirection.y *= -1;
+        
+        if (this.position.y < margin) {
+            this.aiDirection.y = Math.abs(this.aiDirection.y); // Force moving down (away from top wall)
+        } else if (this.position.y > canvasHeight - margin) {
+            this.aiDirection.y = -Math.abs(this.aiDirection.y); // Force moving up (away from bottom wall)
+        }
+        
+        // Additional bias towards battlefield center to prevent edge-hugging
+        if (Math.random() < 0.3) { // 30% chance to move towards center
+            if (this.position.x < centerX - 100) {
+                this.aiDirection.x += 0.5; // Bias towards center
+            } else if (this.position.x > centerX + 100) {
+                this.aiDirection.x -= 0.5; // Bias towards center
+            }
+            
+            if (this.position.y < centerY - 100) {
+                this.aiDirection.y += 0.3; // Gentle bias towards vertical center
+            } else if (this.position.y > centerY + 100) {
+                this.aiDirection.y -= 0.3; // Gentle bias towards vertical center
+            }
         }
     }
 
+    private normalizeToGridMovement(): void {
+        const currentTime = Date.now();
+        const timeSinceCommit = currentTime - this.lastDirectionCommitTime;
+        
+        // Check if we can change direction (commitment period expired)
+        const canChangeDirection = timeSinceCommit > this.directionCommitDuration;
+        
+        // Convert any diagonal movement to pure horizontal or vertical (Atari Combat style)
+        const absX = Math.abs(this.aiDirection.x);
+        const absY = Math.abs(this.aiDirection.y);
+        
+        // If we're still in commitment period, stick to committed direction
+        if (!canChangeDirection) {
+            this.aiDirection.x = this.committedDirection.x;
+            this.aiDirection.y = this.committedDirection.y;
+            return;
+        }
+        
+        // Time to potentially change direction
+        let newDirection: Vector2D;
+        
+        if (absX > absY) {
+            // Favor horizontal movement
+            newDirection = { 
+                x: this.aiDirection.x > 0 ? 1 : -1, 
+                y: 0 
+            };
+        } else if (absY > absX) {
+            // Favor vertical movement
+            newDirection = { 
+                x: 0, 
+                y: this.aiDirection.y > 0 ? 1 : -1 
+            };
+        } else if (absX > 0) {
+            // Equal movement - randomly choose horizontal or vertical
+            if (Math.random() > 0.5) {
+                newDirection = { 
+                    x: this.aiDirection.x > 0 ? 1 : -1, 
+                    y: 0 
+                };
+            } else {
+                newDirection = { 
+                    x: 0, 
+                    y: this.aiDirection.y > 0 ? 1 : -1 
+                };
+            }
+        } else {
+            // No movement - keep current committed direction
+            newDirection = this.committedDirection;
+        }
+        
+        // Check if direction actually changed
+        const directionChanged = (newDirection.x !== this.committedDirection.x || 
+                                newDirection.y !== this.committedDirection.y);
+        
+        if (directionChanged) {
+            // Commit to new direction
+            this.committedDirection = newDirection;
+            this.lastDirectionCommitTime = currentTime;
+        }
+        
+        // Apply the committed direction (scaled by movement magnitude)
+        const magnitude = Math.sqrt(absX * absX + absY * absY);
+        this.aiDirection.x = this.committedDirection.x * magnitude;
+        this.aiDirection.y = this.committedDirection.y * magnitude;
+    }
+
     private executeAIMovement(canvasWidth: number, canvasHeight: number, channelLeft?: number, channelRight?: number): void {
+        // Convert diagonal movement to horizontal/vertical only (Atari Combat style)
+        this.normalizeToGridMovement();
+        
+        // FREEZE MOVEMENT when about to shoot (flashing warning phase)
+        if (this.isAboutToShoot) {
+            // Tank stops moving completely during warning phase - commits to the shot
+            this.aiDirection.x = 0;
+            this.aiDirection.y = 0;
+            return; // Exit early, no movement updates
+        }
+        
         // Normalize AI direction
         const length = Math.sqrt(this.aiDirection.x * this.aiDirection.x + this.aiDirection.y * this.aiDirection.y);
         if (length > 0) {
@@ -598,43 +715,35 @@ export class Tank {
         const dy = enemyTank.position.y - this.position.y;
         const distance = Math.sqrt(dx * dx + dy * dy);
         
-        // Random decision affects shooting behavior
-        if (this.aiCurrentDecision === 'hesitate' && Math.random() < 0.3) { // Reduced from 0.5 - less hesitation
-            return false; // Don't shoot when hesitating
+        // Team-based shooting direction: Left team shoots RIGHT, Right team shoots LEFT
+        const canSeeEnemy = (this.team === 'left' && dx > 0) ||   // Left team can only see enemies to the RIGHT
+                           (this.team === 'right' && dx < 0);     // Right team can only see enemies to the LEFT
+        
+        if (!canSeeEnemy) {
+            return false; // Enemy is not in our firing direction
         }
         
-        if (this.aiCurrentDecision === 'panic' && Math.random() < 0.6) { // Increased from 0.4 - more panic fire
-            return true; // Panic fire regardless of aim
+        // Debug logging for shooting decisions
+        if (Math.random() < 0.01) { // Only log occasionally to avoid spam
+            console.log(`${this.team} tank considering shot: enemy at dx=${dx.toFixed(0)}, dy=${dy.toFixed(0)}, dist=${distance.toFixed(0)}`);
         }
         
-        if (this.aiCurrentDecision === 'overconfident' && distance < 450) {
-            return Math.random() < 0.95; // Increased from 0.9 - shoot almost always when overconfident
+        // For horizontal-only shooting, check if enemy is roughly on same horizontal level
+        const verticalTolerance = 100; // Increased tolerance for easier shooting
+        const isHorizontallyAligned = Math.abs(dy) <= verticalTolerance;
+        
+        // Must be horizontally aligned and within reasonable range
+        if (!isHorizontallyAligned || distance < 50 || distance > 600) { // Increased max range
+            return false;
         }
         
-        // More aggressive shooting - increased range significantly
-        const maxShootingRange = Math.max(this.aiPersonalityModifiers.shootingRange * 1.5, 400); // Increased multiplier and base range
-        
-        if (distance < maxShootingRange && distance > 50) {
-            const angleToEnemy = Math.atan2(dy, dx);
-            const angleDiff = Math.abs(this.angle - angleToEnemy);
-            
-            // Normalize angle difference to 0-PI range
-            const normalizedAngleDiff = Math.min(angleDiff, 2 * Math.PI - angleDiff);
-            
-            // Use personality-based aim accuracy, modified by decisions
-            let aimAccuracy = this.aiPersonalityModifiers.aimAccuracy;
-            
-            if (this.aiCurrentDecision === 'cautious') {
-                aimAccuracy *= 0.8; // Slightly increased from 0.7
-            } else if (this.aiCurrentDecision === 'panic') {
-                aimAccuracy *= 1.8; // Reduced from 2.0 - still less accurate but not completely wild
-            }
-            
-            // More lenient aiming - multiply by 1.2 for more shots
-            return normalizedAngleDiff < (aimAccuracy * 1.2);
+        // Very simple and aggressive shooting logic
+        if (this.aiCurrentDecision === 'hesitate' && Math.random() < 0.02) { // Almost never hesitate
+            return false;
         }
         
-        return false;
+        // If tank can see enemy in range, it should fire!
+        return true; // Fire whenever conditions are met (range, alignment, etc.)
     }
 
     canShoot(): boolean {
@@ -666,10 +775,15 @@ export class Tank {
         return false; // Need to start warning first
     }
 
-    startShootingWarning(): void {
+    startShootingWarning(targetAngle?: number): void {
         if (!this.isAboutToShoot && this.canStartWarning()) {
             this.isAboutToShoot = true;
             this.shootWarningStartTime = Date.now();
+            if (targetAngle !== undefined) {
+                this.targetAngle = targetAngle;
+                // When starting to shoot, orient the tank to face across the gorge
+                this.angle = targetAngle;
+            }
         }
     }
 
@@ -698,18 +812,21 @@ export class Tank {
                (currentTime - this.lastShotTime) > this.shootCooldown;
     }
 
-    shoot(bulletSpeed: number, bulletSize: number): Bullet | null {
+    shoot(bulletSpeed: number, bulletSize: number, targetDistance?: number): Bullet | null {
         if (!this.canShoot()) {
             return null;
         }
 
         this.lastShotTime = Date.now();
         this.hasActiveShell = true; // Mark that this tank has a shell in flight
+        
+        // Use stored target angle if available (for warning shots)
+        const shootingAngle = this.isAboutToShoot ? this.targetAngle : this.angle;
         this.isAboutToShoot = false; // Reset warning state after shooting
 
         const bulletVelocity: Vector2D = {
-            x: Math.cos(this.angle) * bulletSpeed,
-            y: Math.sin(this.angle) * bulletSpeed
+            x: Math.cos(shootingAngle) * bulletSpeed,
+            y: Math.sin(shootingAngle) * bulletSpeed
         };
 
         return new Bullet(
@@ -717,7 +834,8 @@ export class Tank {
             bulletVelocity,
             bulletSize,
             this.playerId,
-            50 // Explosion radius
+            80, // Larger explosion radius - affects more tanks
+            targetDistance // Artillery target distance
         );
     }
 
