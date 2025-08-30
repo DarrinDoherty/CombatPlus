@@ -7,8 +7,8 @@ export class Game {
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
     private config: GameConfig;
-    private tank1!: Tank;
-    private tank2!: Tank;
+    private leftArmyTanks: Tank[];
+    private rightArmyTanks: Tank[];
     private bullets: Bullet[];
     private explosions: Explosion[];
     private pressedKeys: Set<string>;
@@ -32,14 +32,16 @@ export class Game {
         this.config = {
             canvasWidth: canvas.width,
             canvasHeight: canvas.height,
-            tankSpeed: 3,
-            bulletSpeed: 5,
+            tankSpeed: 1.5, // Much slower movement - was 3
+            bulletSpeed: 8, // Keep bullets fast for danger
             tankSize: 30,
             bulletSize: 6
         };
 
         this.bullets = [];
         this.explosions = [];
+        this.leftArmyTanks = [];
+        this.rightArmyTanks = [];
         this.pressedKeys = new Set();
         this.gameRunning = true;
         this.player1Score = 0;
@@ -58,55 +60,198 @@ export class Game {
     }
 
     private initializeTanks(): void {
-        // Player 1 tank (starts on left side, away from channel)
-        this.tank1 = new Tank(
-            { x: this.channelLeft / 2, y: this.config.canvasHeight / 2 },
-            this.config.tankSize,
-            this.config.tankSpeed,
-            '#00ff00',
-            1,
-            {
-                up: 'w',
-                down: 's',
-                left: 'a',
-                right: 'd',
-                shoot: ' ' // spacebar
-            }
-        );
+        // Clear existing tanks
+        this.leftArmyTanks = [];
+        this.rightArmyTanks = [];
+        
+        // Generate random starting positions within each army's territory
+        const leftArmyBounds = {
+            minX: 50,
+            maxX: this.channelLeft - 50,
+            minY: 50,
+            maxY: this.config.canvasHeight - 50
+        };
+        
+        const rightArmyBounds = {
+            minX: this.channelRight + 50,
+            maxX: this.config.canvasWidth - 50,
+            minY: 50,
+            maxY: this.config.canvasHeight - 50
+        };
+        
+        // Personality types to cycle through
+        const personalities = ['aggressive', 'sniper', 'defensive', 'flanker', 'aggressive'] as const;
+        
+        // Create 5 tanks for left army (player 1)
+        for (let i = 0; i < 5; i++) {
+            let leftStartX, leftStartY;
+            let attempts = 0;
+            
+            // Try to find a position that doesn't overlap with existing tanks
+            do {
+                leftStartX = leftArmyBounds.minX + Math.random() * (leftArmyBounds.maxX - leftArmyBounds.minX);
+                leftStartY = leftArmyBounds.minY + Math.random() * (leftArmyBounds.maxY - leftArmyBounds.minY);
+                attempts++;
+            } while (attempts < 50 && this.isPositionOccupied(leftStartX, leftStartY, this.leftArmyTanks, this.config.tankSize * 1.5));
+            
+            const tank = new Tank(
+                { x: leftStartX, y: leftStartY },
+                this.config.tankSize,
+                this.config.tankSpeed,
+                '#00ff00',
+                1,
+                {
+                    up: 'w',
+                    down: 's',
+                    left: 'a',
+                    right: 'd',
+                    shoot: ' ' // spacebar
+                },
+                true, // AI enabled
+                personalities[i] // Different personality for each tank
+            );
+            this.leftArmyTanks.push(tank);
+            console.log(`Created left tank ${i + 1} at (${leftStartX.toFixed(1)}, ${leftStartY.toFixed(1)}) after ${attempts} attempts`);
+        }
+        
+        // Create 5 tanks for right army (player 2)
+        for (let i = 0; i < 5; i++) {
+            let rightStartX, rightStartY;
+            let attempts = 0;
+            
+            // Try to find a position that doesn't overlap with existing tanks
+            do {
+                rightStartX = rightArmyBounds.minX + Math.random() * (rightArmyBounds.maxX - rightArmyBounds.minX);
+                rightStartY = rightArmyBounds.minY + Math.random() * (rightArmyBounds.maxY - rightArmyBounds.minY);
+                attempts++;
+            } while (attempts < 50 && this.isPositionOccupied(rightStartX, rightStartY, this.rightArmyTanks, this.config.tankSize * 1.5));
+            
+            const tank = new Tank(
+                { x: rightStartX, y: rightStartY },
+                this.config.tankSize,
+                this.config.tankSpeed,
+                '#ff0000',
+                2,
+                {
+                    up: 'ArrowUp',
+                    down: 'ArrowDown',
+                    left: 'ArrowLeft',
+                    right: 'ArrowRight',
+                    shoot: 'Enter'
+                },
+                true, // AI enabled
+                personalities[i] // Different personality for each tank
+            );
+            this.rightArmyTanks.push(tank);
+            console.log(`Created right tank ${i + 1} at (${rightStartX.toFixed(1)}, ${rightStartY.toFixed(1)}) after ${attempts} attempts`);
+        }
+        
+        console.log(`Total tanks created: ${this.leftArmyTanks.length} left, ${this.rightArmyTanks.length} right`);
+    }
 
-        // Player 2 tank (starts on right side, away from channel)
-        this.tank2 = new Tank(
-            { x: this.channelRight + (this.config.canvasWidth - this.channelRight) / 2, y: this.config.canvasHeight / 2 },
-            this.config.tankSize,
-            this.config.tankSpeed,
-            '#ff0000',
-            2,
-            {
-                up: 'ArrowUp',
-                down: 'ArrowDown',
-                left: 'ArrowLeft',
-                right: 'ArrowRight',
-                shoot: 'Enter'
+    private isPositionOccupied(x: number, y: number, existingTanks: Tank[], minDistance: number): boolean {
+        for (const tank of existingTanks) {
+            const dx = tank.position.x - x;
+            const dy = tank.position.y - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance < minDistance) {
+                return true;
             }
-        );
+        }
+        return false;
+    }
+
+    private checkTankCollision(tank1: Tank, tank2: Tank): boolean {
+        const dx = tank1.position.x - tank2.position.x;
+        const dy = tank1.position.y - tank2.position.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const minDistance = tank1.size + tank2.size;
+        
+        return distance < minDistance;
+    }
+
+    private resolveAllTankCollisions(): void {
+        const allTanks = [...this.leftArmyTanks, ...this.rightArmyTanks];
+        
+        // Multiple passes to ensure all overlaps are resolved
+        for (let pass = 0; pass < 3; pass++) {
+            for (let i = 0; i < allTanks.length; i++) {
+                for (let j = i + 1; j < allTanks.length; j++) {
+                    const tank1 = allTanks[i];
+                    const tank2 = allTanks[j];
+                    
+                    if (tank1 && tank2 && this.checkTankCollision(tank1, tank2)) {
+                        this.resolveTankCollision(tank1, tank2);
+                    }
+                }
+            }
+        }
+    }
+
+    private resolveTankCollision(tank1: Tank, tank2: Tank): void {
+        // Calculate collision vector
+        const dx = tank1.position.x - tank2.position.x;
+        const dy = tank1.position.y - tank2.position.y;
+        let distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Prevent division by zero
+        if (distance === 0) {
+            distance = 0.1;
+            tank1.position.x += 0.1;
+        }
+        
+        // Normalize collision vector
+        const normalX = dx / distance;
+        const normalY = dy / distance;
+        
+        // Calculate minimum separation distance
+        const minDistance = tank1.size + tank2.size + 5; // Add 5 pixel buffer
+        const overlap = minDistance - distance;
+        
+        if (overlap > 0) {
+            // Push tanks apart equally
+            const pushDistance = overlap / 2;
+            
+            tank1.position.x += normalX * pushDistance;
+            tank1.position.y += normalY * pushDistance;
+            tank2.position.x -= normalX * pushDistance;
+            tank2.position.y -= normalY * pushDistance;
+            
+            // Reverse direction for both tanks when they collide
+            const randomFactor1 = (Math.random() - 0.5) * 0.8;
+            const randomFactor2 = (Math.random() - 0.5) * 0.8;
+            
+            tank1.angle += Math.PI + randomFactor1;
+            tank2.angle += Math.PI + randomFactor2;
+            
+            // Normalize angles
+            tank1.angle = tank1.angle % (2 * Math.PI);
+            tank2.angle = tank2.angle % (2 * Math.PI);
+            if (tank1.angle < 0) tank1.angle += 2 * Math.PI;
+            if (tank2.angle < 0) tank2.angle += 2 * Math.PI;
+        }
     }
 
     private setupEventListeners(): void {
         document.addEventListener('keydown', (e) => {
             this.pressedKeys.add(e.key);
 
-            // Handle shooting
-            if (e.key === this.tank1.controls.shoot) {
-                const bullet = this.tank1.shoot(this.config.bulletSpeed, this.config.bulletSize);
-                if (bullet) {
-                    this.bullets.push(bullet);
+            // Handle shooting for all tanks
+            for (const tank of this.leftArmyTanks) {
+                if (e.key === tank.controls.shoot) {
+                    const bullet = tank.shoot(this.config.bulletSpeed, this.config.bulletSize);
+                    if (bullet) {
+                        this.bullets.push(bullet);
+                    }
                 }
             }
 
-            if (e.key === this.tank2.controls.shoot) {
-                const bullet = this.tank2.shoot(this.config.bulletSpeed, this.config.bulletSize);
-                if (bullet) {
-                    this.bullets.push(bullet);
+            for (const tank of this.rightArmyTanks) {
+                if (e.key === tank.controls.shoot) {
+                    const bullet = tank.shoot(this.config.bulletSpeed, this.config.bulletSize);
+                    if (bullet) {
+                        this.bullets.push(bullet);
+                    }
                 }
             }
 
@@ -146,28 +291,46 @@ export class Game {
             const bullet = this.bullets[i];
             if (!bullet) continue;
             
-            // Check collision with tank1
-            if (bullet.playerId !== 1 && bullet.checkCollision(this.tank1)) {
-                // Create explosion at tank position
-                this.explosions.push(new Explosion(this.tank1.position));
-                // Add screen shake effect
-                this.screenShake = 15;
-                this.player2Score++;
-                this.bullets.splice(i, 1);
-                this.restart();
-                this.updateScore();
-                continue;
+            let hitDetected = false;
+            
+            // Check collision with left army tanks
+            if (bullet.playerId !== 1) {
+                for (let j = this.leftArmyTanks.length - 1; j >= 0; j--) {
+                    const tank = this.leftArmyTanks[j];
+                    if (tank && !tank.isFrozen && bullet.checkCollision(tank)) {
+                        // Create explosion at tank position
+                        this.explosions.push(new Explosion(tank.position));
+                        // Add screen shake effect
+                        this.screenShake = 10; // Reduced shake since tank isn't destroyed
+                        this.player2Score++;
+                        // Freeze the tank instead of destroying it
+                        tank.freeze();
+                        hitDetected = true;
+                        break;
+                    }
+                }
             }
             
-            // Check collision with tank2
-            if (bullet.playerId !== 2 && bullet.checkCollision(this.tank2)) {
-                // Create explosion at tank position
-                this.explosions.push(new Explosion(this.tank2.position));
-                // Add screen shake effect
-                this.screenShake = 15;
-                this.player1Score++;
+            // Check collision with right army tanks
+            if (!hitDetected && bullet.playerId !== 2) {
+                for (let j = this.rightArmyTanks.length - 1; j >= 0; j--) {
+                    const tank = this.rightArmyTanks[j];
+                    if (tank && !tank.isFrozen && bullet.checkCollision(tank)) {
+                        // Create explosion at tank position
+                        this.explosions.push(new Explosion(tank.position));
+                        // Add screen shake effect
+                        this.screenShake = 10; // Reduced shake since tank isn't destroyed
+                        this.player1Score++;
+                        // Freeze the tank instead of destroying it
+                        tank.freeze();
+                        hitDetected = true;
+                        break;
+                    }
+                }
+            }
+            
+            if (hitDetected) {
                 this.bullets.splice(i, 1);
-                this.restart();
                 this.updateScore();
                 continue;
             }
@@ -182,9 +345,79 @@ export class Game {
     public update(): void {
         if (!this.gameRunning) return;
 
-        // Update tanks
-        this.tank1.update(this.pressedKeys, this.config.canvasWidth, this.config.canvasHeight, this.channelLeft, this.channelRight);
-        this.tank2.update(this.pressedKeys, this.config.canvasWidth, this.config.canvasHeight, this.channelLeft, this.channelRight);
+        // Update all tanks with enemy army for AI
+        for (const tank of this.leftArmyTanks) {
+            // Find closest active (non-frozen) enemy tank for AI targeting
+            let closestEnemy: Tank | null = null;
+            let closestDistance = Infinity;
+            
+            for (const enemy of this.rightArmyTanks) {
+                // Skip frozen enemies
+                if (enemy.isFrozen) continue;
+                
+                const dx = enemy.position.x - tank.position.x;
+                const dy = enemy.position.y - tank.position.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestEnemy = enemy;
+                }
+            }
+            
+            if (closestEnemy) {
+                tank.update(this.pressedKeys, this.config.canvasWidth, this.config.canvasHeight, this.channelLeft, this.channelRight, closestEnemy);
+                
+                // Handle AI shooting
+                if (tank.shouldAIShoot(closestEnemy)) {
+                    const bullet = tank.shoot(this.config.bulletSpeed, this.config.bulletSize);
+                    if (bullet) {
+                        this.bullets.push(bullet);
+                    }
+                }
+            } else {
+                // No active enemies - patrol behavior or wait
+                tank.update(this.pressedKeys, this.config.canvasWidth, this.config.canvasHeight, this.channelLeft, this.channelRight);
+            }
+        }
+
+        for (const tank of this.rightArmyTanks) {
+            // Find closest active (non-frozen) enemy tank for AI targeting
+            let closestEnemy: Tank | null = null;
+            let closestDistance = Infinity;
+            
+            for (const enemy of this.leftArmyTanks) {
+                // Skip frozen enemies
+                if (enemy.isFrozen) continue;
+                
+                const dx = enemy.position.x - tank.position.x;
+                const dy = enemy.position.y - tank.position.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < closestDistance) {
+                    closestDistance = distance;
+                    closestEnemy = enemy;
+                }
+            }
+            
+            if (closestEnemy) {
+                tank.update(this.pressedKeys, this.config.canvasWidth, this.config.canvasHeight, this.channelLeft, this.channelRight, closestEnemy);
+                
+                // Handle AI shooting
+                if (tank.shouldAIShoot(closestEnemy)) {
+                    const bullet = tank.shoot(this.config.bulletSpeed, this.config.bulletSize);
+                    if (bullet) {
+                        this.bullets.push(bullet);
+                    }
+                }
+            } else {
+                // No active enemies - patrol behavior or wait
+                tank.update(this.pressedKeys, this.config.canvasWidth, this.config.canvasHeight, this.channelLeft, this.channelRight);
+            }
+        }
+
+        // Handle tank-to-tank collisions for all tanks after movement
+        this.resolveAllTankCollisions();
 
         // Update bullets
         this.bullets.forEach(bullet => bullet.update());
@@ -226,9 +459,34 @@ export class Game {
         // Draw no man's land channel
         this.drawChannel();
 
-        // Render tanks
-        this.tank1.render(this.ctx);
-        this.tank2.render(this.ctx);
+        // Render all tanks
+        for (let i = 0; i < this.leftArmyTanks.length; i++) {
+            const tank = this.leftArmyTanks[i];
+            if (tank) {
+                tank.render(this.ctx);
+                
+                // Debug: Draw tank number
+                this.ctx.fillStyle = '#fff';
+                this.ctx.font = '14px Arial';
+                this.ctx.fillText(`L${i+1}`, tank.position.x - 10, tank.position.y - 20);
+            }
+        }
+        for (let i = 0; i < this.rightArmyTanks.length; i++) {
+            const tank = this.rightArmyTanks[i];
+            if (tank) {
+                tank.render(this.ctx);
+                
+                // Debug: Draw tank number
+                this.ctx.fillStyle = '#fff';
+                this.ctx.font = '14px Arial';
+                this.ctx.fillText(`R${i+1}`, tank.position.x - 10, tank.position.y - 20);
+            }
+        }
+        
+        // Debug: Show tank count in top corner
+        this.ctx.fillStyle = '#fff';
+        this.ctx.font = '16px Arial';
+        this.ctx.fillText(`Left: ${this.leftArmyTanks.length} | Right: ${this.rightArmyTanks.length}`, 10, 30);
 
         // Render bullets
         this.bullets.forEach(bullet => bullet.render(this.ctx));
