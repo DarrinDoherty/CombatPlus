@@ -40,22 +40,218 @@
             color: #ff6600;
             margin-bottom: 20px;
         }
+        
+        .restart-btn {
+            background-color: #ff6600;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            font-size: 16px;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            margin: 10px;
+            border-radius: 5px;
+        }
+        
+        .restart-btn:hover {
+            background-color: #ff8800;
+        }
+        
+        .restart-btn:active {
+            background-color: #cc4400;
+        }
+        
+        .legend {
+            display: flex;
+            justify-content: space-between;
+            max-width: 800px;
+            margin: 20px auto;
+            text-align: left;
+            font-size: 12px;
+        }
+        
+        .legend-column {
+            flex: 1;
+            margin: 0 10px;
+            background-color: #111;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #444;
+        }
+        
+        .legend h3 {
+            color: #ff6600;
+            margin-top: 0;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 8px 0;
+        }
+        
+        .legend-symbol {
+            width: 30px;
+            height: 20px;
+            margin-right: 10px;
+            text-align: center;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .controls {
+            margin-top: 10px;
+            font-size: 14px;
+            background-color: #111;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #444;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+        }
     </style>
 </head>
 <body>
     <div class="game-container">
-        <h1>NO MANS LAND</h1>
+        <h1>NO MANS LAND - RESCUE MISSION</h1>
+        <div style="font-size: 12px; color: #888; margin-bottom: 10px;">
+            Version: t9u0v1w2-x3y4-z5a6-b7c8-d9e0f1g2h3i4
+        </div>
         <div class="score">
-            <span id="player1Score">Player 1: 0</span> | 
-            <span id="player2Score">Player 2: 0</span>
+            <span id="player1Score">Lives: 3 | Rescues: 0</span> | 
+            <span id="player2Score">Press START to begin | Freeze: 5.0s</span>
         </div>
         <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <button id="restartBtn" class="restart-btn">START MISSION</button>
+        
+        <div class="legend">
+            <div class="legend-column">
+                <h3>🎮 GAME ELEMENTS</h3>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #ffff00;">🏥</div>
+                    <span><strong>Medic (You)</strong> - Yellow character in center channel</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #ff0000;">💔</div>
+                    <span><strong>Injured Soldier</strong> - Red figure with health meter (30s to bleed out!)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #00ff00;">🏥</div>
+                    <span><strong>Hospital Zone</strong> - Green safety area at top (50px)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #333;">█</div>
+                    <span><strong>No Man's Land</strong> - Gray channel in center</span>
+                </div>
+            </div>
+            
+            <div class="legend-column">
+                <h3>🚗 TANKS & COMBAT</h3>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #0066cc;">◼</div>
+                    <span><strong>Left Army</strong> - Blue tanks (left side)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #cc6600;">◼</div>
+                    <span><strong>Right Army</strong> - Orange tanks (right side)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #666;">◼</div>
+                    <span><strong>Disabled Tank</strong> - Gray (repairing for 8 seconds)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="color: #ffffff;">❄</div>
+                    <span><strong>Frozen Tank</strong> - Snowflake icon (5 seconds)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="color: #ffaa00;">🔧</div>
+                    <span><strong>Repairing Tank</strong> - Wrench icon with progress bar</span>
+                </div>
+            </div>
+            
+            <div class="legend-column">
+                <h3>💣 WEAPONS & ITEMS</h3>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #ffffff;">●</div>
+                    <span><strong>Bullets</strong> - White projectiles (deadly!)</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #00ccff;">💎</div>
+                    <span><strong>Freeze Grenade</strong> - Blue projectile you throw</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #006600;">💣</div>
+                    <span><strong>Pickup Grenade</strong> - Green grenade to collect</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #ff6600;">💥</div>
+                    <span><strong>Flashing Grenade</strong> - About to explode!</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-symbol" style="background-color: #ff0000;">💥</div>
+                    <span><strong>Explosion</strong> - Damage and screen shake</span>
+                </div>
+            </div>
+        </div>
+        
         <div class="controls">
-            <p><strong>Autonomous Tank Battle:</strong> Two armies with distinct fighting styles!</p>
-            <p><strong>Left Army (Green) - AGGRESSIVE:</strong> Fast, close-combat fighters</p>
-            <p><strong>Right Army (Red) - SNIPER:</strong> Long-range, precision marksmen</p>
-            <p><strong>No Man's Land:</strong> The center channel - crossfire zone!</p>
-            <p>Press R to restart the battle</p>
+            <h3 style="color: #ff6600; margin-top: 0;">📋 MISSION BRIEFING & CONTROLS</h3>
+            
+            <div style="margin-bottom: 15px;">
+                <strong style="color: #00ff00;">🎯 OBJECTIVE:</strong> You are a combat medic trapped in a battlefield between two tank armies. 
+                Rescue injured soldiers from the battlefield and bring them to the hospital safety zone at the top. 
+                <strong style="color: #ff0000;">⏰ CRITICAL: Soldiers continue bleeding out even while being carried! Get to the hospital fast!</strong>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; margin-bottom: 15px;">
+                <div style="flex: 1; margin-right: 20px;">
+                    <strong style="color: #ffaa00;">🎮 MOVEMENT:</strong><br>
+                    <strong>↑ UP ARROW:</strong> Move medic up<br>
+                    <strong>↓ DOWN ARROW:</strong> Move medic down<br>
+                    <br>
+                    <strong style="color: #00ccff;">💣 GRENADES:</strong><br>
+                    <strong>W:</strong> Throw grenade UP<br>
+                    <strong>A:</strong> Throw grenade LEFT<br>
+                    <strong>S:</strong> Throw grenade DOWN<br>
+                    <strong>D:</strong> Throw grenade RIGHT<br>
+                    <strong>SPACEBAR:</strong> Smart grenade (auto-aim)
+                </div>
+                <div style="flex: 1;">
+                    <strong style="color: #ff6600;">⚠️ SURVIVAL TIPS:</strong><br>
+                    • Stay in hospital zone to be safe from bullets<br>
+                    • Collect green grenades for more ammunition<br>
+                    • Use WASD to throw grenades tactically<br>
+                    • Target tank clusters on left/right sides<br>
+                    • <strong style="color: #ff0000;">Soldiers bleed out while carried!</strong><br>
+                    • Watch for flashing grenades - they explode!<br>
+                    <strong>START MISSION:</strong> Begin/restart game
+                </div>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between;">
+                <div style="flex: 1; margin-right: 20px;">
+                    <strong style="color: #00ccff;">🎮 GAMEPLAY MECHANICS:</strong><br>
+                    • <strong>Lives:</strong> You have 3 lives, bullets cost 1 life<br>
+                    • <strong>Grenades:</strong> Start with 3, collect more from pickups<br>
+                    • <strong>Tank Health:</strong> 2 hits to destroy (healthy → disabled → destroyed)<br>
+                    • <strong>Tank Repair:</strong> Disabled tanks auto-repair in 8 seconds
+                </div>
+                <div style="flex: 1;">
+                    <strong style="color: #ff00ff;">🏆 MISSION PROGRESS:</strong><br>
+                    • <strong>Rescue Soldiers:</strong> Each rescue shows soldier's story<br>
+                    • <strong>Continuous Bleeding:</strong> Timer runs until hospital safety!<br>
+                    • <strong>Time Pressure:</strong> 30-second bleeding out timer per soldier<br>
+                    • <strong>Death Consequences:</strong> Failed rescues show mourning tribute<br>
+                    • <strong>Spawning:</strong> New tanks spawn when sides get low<br>
+                    • <strong>Difficulty:</strong> Fewer tanks = faster enemy respawn<br>
+                    • <strong>Strategy:</strong> Clear path before rescue attempts!
+                </div>
+            </div>
         </div>
     </div>
     

@@ -31,6 +31,12 @@ export class Tank {
     public isFrozen: boolean;
     public frozenUntil: number;
     public frozenDuration: number;
+    public health: number;
+    public maxHealth: number;
+    public isDisabled: boolean;
+    public disabledSince: number;
+    public repairTime: number;
+    public team: 'left' | 'right';
 
     constructor(
         position: Vector2D,
@@ -40,7 +46,8 @@ export class Tank {
         playerId: number,
         controls: Controls,
         isAI: boolean = true,
-        personality?: 'aggressive' | 'defensive' | 'sniper' | 'flanker'
+        personality?: 'aggressive' | 'defensive' | 'sniper' | 'flanker',
+        team: 'left' | 'right' = 'left'
     ) {
         this.position = { ...position };
         this.angle = 0;
@@ -71,6 +78,14 @@ export class Tank {
         this.isFrozen = false;
         this.frozenUntil = 0;
         this.frozenDuration = 3000; // 3 seconds freeze duration
+        
+        // Initialize health system
+        this.maxHealth = 2;
+        this.health = this.maxHealth;
+        this.isDisabled = false;
+        this.disabledSince = 0;
+        this.repairTime = 8000; // 8 seconds to repair from disabled state
+        this.team = team;
     }
 
     private setPersonalityModifiers(): void {
@@ -121,8 +136,8 @@ export class Tank {
         }
     }
 
-    update(pressedKeys: Set<string>, canvasWidth: number, canvasHeight: number, channelLeft?: number, channelRight?: number, enemyTank?: Tank): void {
-        // Check if tank is frozen
+    update(pressedKeys: Set<string>, canvasWidth: number, canvasHeight: number, channelLeft?: number, channelRight?: number, enemyTank?: Tank): boolean {
+        // Check if tank is frozen or disabled
         const currentTime = Date.now();
         if (this.isFrozen) {
             if (currentTime >= this.frozenUntil) {
@@ -130,7 +145,19 @@ export class Tank {
                 console.log(`Tank ${this.playerId} unfrozen!`);
             } else {
                 // Tank is frozen, skip all movement and AI updates
-                return;
+                return false;
+            }
+        }
+        
+        // If tank is disabled (1 hit), check if it should be repaired
+        if (this.isDisabled) {
+            if (currentTime - this.disabledSince >= this.repairTime) {
+                this.repair();
+                console.log(`Tank ${this.playerId} (${this.team}) has been repaired and is back in action!`);
+                return true; // Tank was repaired
+            } else {
+                // Tank is still disabled, skip all movement and AI updates
+                return false;
             }
         }
         
@@ -139,6 +166,28 @@ export class Tank {
         } else {
             this.updateManual(pressedKeys, canvasWidth, canvasHeight, channelLeft, channelRight);
         }
+        
+        return false; // No repair happened
+    }
+
+    takeDamage(): 'disabled' | 'destroyed' | 'none' {
+        this.health--;
+        
+        if (this.health <= 0) {
+            return 'destroyed';
+        } else if (this.health === 1) {
+            this.isDisabled = true;
+            this.disabledSince = Date.now(); // Track when tank became disabled
+            return 'disabled';
+        }
+        
+        return 'none';
+    }
+
+    repair(): void {
+        this.health = this.maxHealth; // Fully repair the tank
+        this.isDisabled = false;
+        this.disabledSince = 0;
     }
 
     private updateAI(canvasWidth: number, canvasHeight: number, channelLeft?: number, channelRight?: number, enemyTank?: Tank): void {
@@ -251,12 +300,12 @@ export class Tank {
         if (dy < 80) {
             // Check if we can see across the channel
             if (channelLeft !== undefined && channelRight !== undefined) {
-                // Left tank can see right tank if right tank is visible
-                if (this.playerId === 1 && enemyTank.position.x > channelRight) {
+                // Left team can see right team if right team is visible
+                if (this.team === 'left' && enemyTank.position.x > channelRight) {
                     return true;
                 }
-                // Right tank can see left tank if left tank is visible
-                if (this.playerId === 2 && enemyTank.position.x < channelLeft) {
+                // Right team can see left team if left team is visible
+                if (this.team === 'right' && enemyTank.position.x < channelLeft) {
                     return true;
                 }
             }
@@ -383,7 +432,7 @@ export class Tank {
                 break;
                 
             case 'flanker':
-                const flankAngle = angleToEnemy + (this.playerId === 1 ? Math.PI / 2 : -Math.PI / 2);
+                const flankAngle = angleToEnemy + (this.team === 'left' ? Math.PI / 2 : -Math.PI / 2);
                 if (this.aiCurrentDecision === 'reposition') {
                     // Deliberate flanking movement
                     this.aiDirection.x = Math.cos(flankAngle) * speedMod * 1.2;
@@ -571,7 +620,11 @@ export class Tank {
     }
 
     canShoot(): boolean {
-        return Date.now() - this.lastShotTime > this.shootCooldown;
+        // Tank can't shoot if frozen, disabled, or on cooldown
+        const currentTime = Date.now();
+        return !this.isFrozen && 
+               !this.isDisabled && 
+               (currentTime - this.lastShotTime) > this.shootCooldown;
     }
 
     shoot(bulletSpeed: number, bulletSize: number): Bullet | null {
@@ -599,34 +652,82 @@ export class Tank {
         ctx.translate(this.position.x, this.position.y);
         ctx.rotate(this.angle);
 
-        // Tank body
-        ctx.fillStyle = this.isFrozen ? '#4444ff' : this.color; // Blue when frozen
+        // Tank body - color based on health and status
+        let bodyColor = this.color;
+        if (this.isFrozen) {
+            bodyColor = '#4444ff'; // Blue when frozen
+        } else if (this.isDisabled) {
+            bodyColor = '#666666'; // Gray when disabled
+        } else if (this.health === 1) {
+            bodyColor = '#ffaa00'; // Orange when damaged
+        }
+        
+        ctx.fillStyle = bodyColor;
         ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
 
         // Tank barrel
-        ctx.fillStyle = this.isFrozen ? '#6666ff' : '#888'; // Lighter blue when frozen
+        let barrelColor = '#888';
+        if (this.isFrozen) {
+            barrelColor = '#6666ff'; // Lighter blue when frozen
+        } else if (this.isDisabled) {
+            barrelColor = '#444444'; // Dark gray when disabled
+        }
+        ctx.fillStyle = barrelColor;
         ctx.fillRect(0, -2, this.size / 2, 4);
 
         // Tank outline
-        ctx.strokeStyle = this.isFrozen ? '#aaaaff' : '#fff'; // Light blue outline when frozen
-        ctx.lineWidth = this.isFrozen ? 2 : 1; // Thicker outline when frozen
+        let outlineColor = '#fff';
+        let lineWidth = 1;
+        if (this.isFrozen) {
+            outlineColor = '#aaaaff'; // Light blue outline when frozen
+            lineWidth = 2;
+        } else if (this.isDisabled) {
+            outlineColor = '#999999'; // Gray outline when disabled
+            lineWidth = 2;
+        }
+        ctx.strokeStyle = outlineColor;
+        ctx.lineWidth = lineWidth;
         ctx.strokeRect(-this.size / 2, -this.size / 2, this.size, this.size);
 
-        // Add freeze indicator
+        // Status indicators
         if (this.isFrozen) {
             ctx.fillStyle = '#ffffff';
             ctx.font = '12px Arial';
             ctx.textAlign = 'center';
             ctx.fillText('❄', 0, -this.size/2 - 10);
+        } else if (this.isDisabled) {
+            // Show repair progress
+            const currentTime = Date.now();
+            const repairProgress = Math.min((currentTime - this.disabledSince) / this.repairTime, 1);
+            
+            // Draw repair progress bar
+            const barWidth = this.size;
+            const barHeight = 4;
+            const barY = -this.size/2 - 15;
+            
+            // Background bar
+            ctx.fillStyle = '#444444';
+            ctx.fillRect(-barWidth/2, barY, barWidth, barHeight);
+            
+            // Progress bar
+            ctx.fillStyle = repairProgress < 1 ? '#ffaa00' : '#00ff00';
+            ctx.fillRect(-barWidth/2, barY, barWidth * repairProgress, barHeight);
+            
+            // Repair icon
+            ctx.fillStyle = '#ffaa00';
+            ctx.font = '10px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('🔧', 0, -this.size/2 - 20);
         }
 
         ctx.restore();
     }
 
-    freeze(): void {
+    freeze(duration?: number): void {
         this.isFrozen = true;
-        this.frozenUntil = Date.now() + this.frozenDuration;
-        console.log(`Tank ${this.playerId} frozen for ${this.frozenDuration/1000} seconds!`);
+        const freezeTime = duration || this.frozenDuration;
+        this.frozenUntil = Date.now() + freezeTime;
+        console.log(`Tank ${this.playerId} frozen for ${freezeTime/1000} seconds!`);
     }
 
     checkCollision(other: Tank): boolean {
