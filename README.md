@@ -2,6 +2,57 @@
 
 An advanced TypeScript implementation inspired by Atari Combat, evolved into a sophisticated tactical rescue mission game with AI tank warfare, dynamic spawning, and emotional soldier rescue mechanics.
 
+## 🚀 Quick Start
+
+### Prerequisites
+
+- Python 3.x (for local web server)
+- Node.js and npm (for development)
+
+### Running the Game
+
+1. **Clone the repository:**
+
+   ```bash
+   git clone https://github.com/DarrinDoherty/CombatPlus.git
+   cd CombatPlus
+   ```
+
+2. **Install dependencies:**
+
+   ```bash
+   npm install
+   ```
+
+3. **Build the TypeScript:**
+
+   ```bash
+   npm run build
+   ```
+
+4. **Start the web server:**
+
+   ```bash
+   npm start
+   ```
+
+5. **Open your browser and navigate to:**
+
+   ```url
+   http://localhost:8000
+   ```
+
+6. **Wait for loading to complete, then click "START MISSION" to begin!**
+
+### Development Mode
+
+For development with auto-compilation:
+
+```bash
+npm run dev    # Starts TypeScript watch mode
+npm start      # Start web server (in another terminal)
+```
+
 ## 🎮 Game Overview
 
 Combat Plus is a single-player tactical rescue game where you play as a medic navigating through intense tank warfare to rescue injured soldiers. Each mission presents unique challenges with dynamic AI personalities, bleeding out timers, and strategic freeze grenade combat.
