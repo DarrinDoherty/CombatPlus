@@ -2,7 +2,19 @@
 
 An advanced TypeScript implementation inspired by Atari Combat, evolved into a sophisticated tactical rescue mission game with AI tank warfare, dynamic spawning, and emotional soldier rescue mechanics.
 
+## 🎮 Play Now!
+
+**[🚀 Play Combat Plus Online](https://darrindoherty.github.io/CombatPlus/)**
+
+*No installation required - just click and play in your browser!*
+
 ## 🚀 Quick Start
+
+### 🌐 Play Online (Recommended)
+
+Just visit **[darrindoherty.github.io/CombatPlus](https://darrindoherty.github.io/CombatPlus/)** - no setup required!
+
+### 💻 Run Locally
 
 ### Prerequisites
 
